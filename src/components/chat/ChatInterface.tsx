@@ -6,22 +6,55 @@ import ChatHeader from './ChatHeader'
 import ChatMessages from './ChatMessages'
 import MessageInput from './MessageInput'
 import FeaturesBar from './FeaturesBar'
-import { Message, MessageType } from './types'
+import { Message, MessageType, ApiMessage, ChatResponse } from './types'
 
 export default function ChatInterface() {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: uuidv4(),
       type: 'ai',
-      text: "Hello! I'm your personal AI assistant. I've been configured based on your software selections and I'm ready to help you with your tasks. What can I help you with today?",
+      text: "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?",
       timestamp: new Date(),
+    }
+  ])
+
+  // Track backend conversation history
+  const [conversationHistory, setConversationHistory] = useState<ApiMessage[]>([
+    {
+      role: 'assistant',
+      content: "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?"
     }
   ])
 
   const [isTyping, setIsTyping] = useState(false)
 
-  const handleSendMessage = (text: string) => {
-    // Add user message
+  // Function to send chat message to backend
+  const sendChatMessage = async (message: string, history: ApiMessage[]): Promise<ChatResponse> => {
+    try {
+      const response = await fetch('/api/chat', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message,
+          conversationHistory: history,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`API error: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error sending chat message:', error);
+      throw error;
+    }
+  }
+
+  const handleSendMessage = async (text: string) => {
+    // Add user message to UI
     const userMessage: Message = {
       id: uuidv4(),
       type: 'user',
@@ -34,51 +67,51 @@ export default function ChatInterface() {
     // Show typing indicator
     setIsTyping(true)
     
-    // Simulate AI response after a delay
-    setTimeout(() => {
-      setIsTyping(false)
+    try {
+      // Add user message to conversation history
+      const updatedHistory = [
+        ...conversationHistory,
+        { role: 'user', content: text }
+      ];
       
-      if (text.toLowerCase().includes('schedule')) {
-        // If message is about schedule, include calendar component
-        const aiResponse: Message = {
-          id: uuidv4(),
-          type: 'ai',
-          text: "I'd be happy to help organize your schedule! I can see from your connected calendar that you have several meetings already planned. Here's an overview of your week:",
-          timestamp: new Date(),
-          components: [
-            {
-              id: uuidv4(),
-              type: 'calendar',
-              content: null
-            }
-          ]
-        }
-        
-        setMessages(prev => [...prev, aiResponse])
-        
-        // Add follow-up question
-        setTimeout(() => {
-          const followUpMessage: Message = {
-            id: uuidv4(),
-            type: 'ai',
-            text: "Would you like me to suggest some optimal times for focused work or help reschedule any of your existing commitments?",
-            timestamp: new Date(),
-          }
-          
-          setMessages(prev => [...prev, followUpMessage])
-        }, 1000)
-      } else {
-        // Default response
-        const aiResponse: Message = {
-          id: uuidv4(),
-          type: 'ai',
-          text: `I understand you're asking about "${text}". How can I assist you with this task?`,
-          timestamp: new Date(),
-        }
-        
-        setMessages(prev => [...prev, aiResponse])
+      // Send message to backend
+      const response = await sendChatMessage(text, conversationHistory)
+      
+      // Handle error
+      if (!response.success || !response.reply) {
+        throw new Error(response.error || 'Failed to get response')
       }
-    }, 1500)
+      
+      // Update conversation history for backend
+      if (response.conversationHistory) {
+        setConversationHistory(response.conversationHistory)
+      }
+      
+      // Add AI response to UI
+      const aiResponse: Message = {
+        id: uuidv4(),
+        type: 'ai',
+        text: response.reply,
+        timestamp: new Date(),
+      }
+      
+      setIsTyping(false)
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse])
+      
+    } catch (error) {
+      console.error('Error getting response:', error)
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: uuidv4(),
+        type: 'ai',
+        text: 'Sorry, I encountered an error. Please try again later.',
+        timestamp: new Date(),
+      }
+      
+      setIsTyping(false)
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage])
+    }
   }
 
   // Add typing indicator when AI is typing

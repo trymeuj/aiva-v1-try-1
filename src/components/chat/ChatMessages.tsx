@@ -1,6 +1,7 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
+import ReactMarkdown from 'react-markdown'
 import { Message, MessageType } from './types'
 
 interface ChatMessagesProps {
@@ -50,6 +51,11 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
         )
       
       case 'ai':
+        // Format asterisks as markdown bullet points
+        const formattedText = message.text
+          .replace(/\*\*\*/g, '\n\n* ')  // Convert *** to markdown bullet points
+          .replace(/\*\*/g, '**');        // Keep regular bold formatting
+
         return (
           <div key={message.id} className="flex items-start">
             <div className="flex-shrink-0 mr-4">
@@ -61,7 +67,11 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
             </div>
             <div className="space-y-3 max-w-md">
               <div className="bg-white rounded-2xl rounded-tl-none p-4 shadow-sm">
-                <p className="text-gray-800">{message.text}</p>
+                <div className="text-gray-800 prose prose-sm">
+                  <ReactMarkdown>
+                    {formattedText}
+                  </ReactMarkdown>
+                </div>
                 <span className="text-xs text-gray-500 mt-2 block">{formatTime(message.timestamp)}</span>
               </div>
               

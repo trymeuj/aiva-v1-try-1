@@ -13,3 +13,21 @@ export interface MessageComponent {
   type: 'text' | 'calendar' | 'chart';
   content: any;
 }
+
+// API communication types for backend integration
+export interface ApiMessage {
+  role: string;
+  content: string;
+}
+
+export interface ChatRequest {
+  message: string;
+  conversationHistory: ApiMessage[];
+}
+
+export interface ChatResponse {
+  success: boolean;
+  reply?: string;
+  conversationHistory?: ApiMessage[];
+  error?: string;
+}
