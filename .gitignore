@@ -1,41 +1,61 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+# Node.js dependencies
+node_modules/
 
-# dependencies
-/node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
+# Python virtual environments
+# Ignore Python virtual environments
+.venv/
+venv*/
+backend/venv-3.11/
 
-# testing
-/coverage
 
-# next.js
-/.next/
-/out/
+# Environment & secret files
+.env
+.env.local
+.env.development.local
+.env.production.local
+.env.test.local
 
-# production
-/build
+# Build artifacts
+.next/
+out/
+dist/
+build/
 
-# misc
-.DS_Store
-*.pem
-
-# debug
+# Logs and debugging files
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-.pnpm-debug.log*
+pip-log.txt
+pip-delete-this-directory.txt
 
-# env files (can opt-in for committing if needed)
-.env*
+# Cache & temporary files
+.cache/
+*.pyc
+__pycache__/
+*.pyo
+*.pyd
 
-# vercel
-.vercel
+# Database & local storage
+db.sqlite3
+*.sqlite3
+*.db
 
-# typescript
-*.tsbuildinfo
-next-env.d.ts
+# Coverage reports
+coverage/
+*.coverage
+.nyc_output/
+coverage-final.json
+
+# IDE and editor settings
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS-specific files
+.DS_Store
+Thumbs.db

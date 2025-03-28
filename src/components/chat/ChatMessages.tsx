@@ -1,8 +1,30 @@
 'use client'
 
-import { useRef, useEffect } from 'react'
+import { useRef, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Message, MessageType } from './types'
+
+// Create a client component just for time display
+function TimeDisplay({ date }: { date: Date }) {
+  const [displayTime, setDisplayTime] = useState<string>('')
+  
+  useEffect(() => {
+    try {
+      // Ensure we have a valid Date object
+      const dateObj = new Date(date);
+      // Format time on client-side only
+      setDisplayTime(dateObj.toLocaleTimeString([], { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      }));
+    } catch (error) {
+      console.error('Error formatting date:', error);
+      setDisplayTime(''); // Fallback to empty string on error
+    }
+  }, [date]);
+  
+  return <>{displayTime}</>;
+}
 
 interface ChatMessagesProps {
   messages: Message[]
@@ -16,11 +38,6 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  // Format timestamp to display only hours and minutes
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  }
-
   // Render different message types
   const renderMessage = (message: Message) => {
     switch (message.type) {
@@ -29,7 +46,9 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
           <div key={message.id} className="flex items-start justify-end">
             <div className="bg-blue-600 rounded-2xl rounded-tr-none p-4 shadow-sm max-w-md">
               <p className="text-white">{message.text}</p>
-              <span className="text-xs text-blue-200 mt-2 block">{formatTime(message.timestamp)}</span>
+              <span className="text-xs text-blue-200 mt-2 block">
+                <TimeDisplay date={message.timestamp} />
+              </span>
             </div>
             <div className="flex-shrink-0 ml-4">
               <div className="h-10 w-10 rounded-full bg-gray-200 flex items-center justify-center overflow-hidden">
@@ -100,7 +119,9 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
                     {formattedText}
                   </ReactMarkdown>
                 </div>
-                <span className="text-xs text-gray-500 mt-2 block">{formatTime(message.timestamp)}</span>
+                <span className="text-xs text-gray-500 mt-2 block">
+                  <TimeDisplay date={message.timestamp} />
+                </span>
               </div>
               
               {message.components?.map((component, index) => (
@@ -129,7 +150,9 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
                       </div>
                     </div>
                   )}
-                  <span className="text-xs text-gray-500 mt-2 block">{formatTime(message.timestamp)}</span>
+                  <span className="text-xs text-gray-500 mt-2 block">
+                    <TimeDisplay date={message.timestamp} />
+                  </span>
                 </div>
               ))}
             </div>

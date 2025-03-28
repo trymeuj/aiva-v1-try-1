@@ -65,6 +65,27 @@ export function parseCommand(command: string): MCPToolRequest | null {
  */
 export async function callMCPServer(toolRequest: MCPToolRequest): Promise<ChatResponse> {
   try {
+     // Define required parameters for each tool
+     const requiredParams: Record<string, string[]> = {
+      'create-doc': ['title'],
+      'read-doc': ['document_id'],
+      'rewrite-document': ['document_id', 'final_text'],
+      'read-comments': ['document_id'],
+      'create-comment': ['document_id', 'content'],
+      // Add other tools and their required parameters
+    };
+    // Check if all required parameters are present
+    const toolRequirements = requiredParams[toolRequest.tool] || [];
+    const missingParams = toolRequirements.filter(param => 
+      !toolRequest.parameters[param] || toolRequest.parameters[param].trim() === ''
+    );
+
+    if (missingParams.length > 0) {
+      return {
+        success: true,
+        reply: `Missing required parameters. Please Provide ${missingParams.join(', ')} parameter for ${toolRequest.tool} tool `
+      };
+    }
     // Use the Next.js rewrite route instead of direct call to avoid CORS
     const url = `/mcp/${toolRequest.tool}`;
     

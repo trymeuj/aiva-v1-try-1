@@ -2,6 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
+import { useMemory } from '@/hooks/useMemory'
+import { MessageSource } from './types'
 import ChatHeader from './ChatHeader'
 import ChatMessages from './ChatMessages'
 import MessageInput from './MessageInput'
@@ -13,7 +15,11 @@ import { searchWeb } from '@/lib/searchService'
 
 export default function ChatInterface(): React.ReactElement {
   const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon in the message input or type @docs to see available commands. Click the search icon to search the web.";
+  
+  // Initialize memory hook
+  const { isReady, getMessages, saveMessage } = useMemory()
 
+  // Initialize with welcome message
   const [messages, setMessages] = useState<Message[]>([
     {
       id: uuidv4(),
@@ -32,6 +38,29 @@ export default function ChatInterface(): React.ReactElement {
   ])
 
   const [isTyping, setIsTyping] = useState<boolean>(false)
+
+  // Load messages from storage after component mounts
+  useEffect(() => {
+    if (isReady) {
+      const storedMessages = getMessages()
+      
+      if (storedMessages.length > 0) {
+        // Use stored messages if available
+        setMessages(storedMessages)
+        
+        // Convert stored messages to API format for conversation history
+        const apiMessages: ApiMessage[] = storedMessages.map(msg => ({
+          role: msg.type === 'user' ? 'user' : 'assistant',
+          content: msg.text
+        }))
+        
+        setConversationHistory(apiMessages)
+      } else {
+        // No stored messages, store the welcome message
+        saveMessage(messages[0], 'llm')
+      }
+    }
+  }, [isReady])
 
   // Function to send chat message to backend
   const sendChatMessage = async (message: string, history: ApiMessage[]): Promise<ChatResponse> => {
@@ -69,6 +98,9 @@ export default function ChatInterface(): React.ReactElement {
     
     setMessages(prev => [...prev, userMessage])
     
+    // Save user message to memory
+    saveMessage(userMessage, 'user');
+    
     // Show typing indicator
     setIsTyping(true)
     
@@ -89,6 +121,15 @@ export default function ChatInterface(): React.ReactElement {
         if (command) {
           // Route to MCP server
           response = await callMCPServer(command);
+          
+          if (response.success && response.reply) {
+            // Update conversation history for MCP interaction
+            const mcpConversationUpdate = [
+              ...updatedHistory,
+              { role: 'assistant', content: response.reply }
+            ];
+            setConversationHistory(mcpConversationUpdate);
+          }
         } else {
           response = {
             success: false,
@@ -121,6 +162,10 @@ export default function ChatInterface(): React.ReactElement {
       setIsTyping(false);
       setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse]);
       
+      // Store AI response in memory with appropriate source
+      const source: MessageSource = isMCPCommand(text) ? 'mcp' : 'llm';
+      saveMessage(aiResponse, source);
+      
     } catch (error) {
       console.error('Error getting response:', error);
       
@@ -134,6 +179,9 @@ export default function ChatInterface(): React.ReactElement {
       
       setIsTyping(false);
       setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage]);
+      
+      // Store error message in memory
+      saveMessage(errorMessage, 'llm');
     }
   }
 
@@ -148,6 +196,9 @@ export default function ChatInterface(): React.ReactElement {
     }
     
     setMessages(prev => [...prev, userMessage])
+    
+    // Store search query in memory
+    saveMessage(userMessage, 'user');
     
     // Show typing indicator
     setIsTyping(true)
@@ -172,6 +223,26 @@ export default function ChatInterface(): React.ReactElement {
       setIsTyping(false);
       setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), searchResponse]);
       
+      // Store search results in memory
+      saveMessage(searchResponse, 'websearch');
+      
+      // Add search result to conversation history
+      // This makes the search results available for LLM context
+      const searchQueryMessage: ApiMessage = { 
+        role: 'user', 
+        content: `Search query: ${query}` 
+      };
+      const searchResultMessage: ApiMessage = { 
+        role: 'assistant', 
+        content: response.reply 
+      };
+      
+      setConversationHistory(prevHistory => [
+        ...prevHistory,
+        searchQueryMessage,
+        searchResultMessage
+      ]);
+      
     } catch (error) {
       console.error('Error getting search results:', error);
       
@@ -185,6 +256,9 @@ export default function ChatInterface(): React.ReactElement {
       
       setIsTyping(false);
       setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage]);
+      
+      // Store error message in memory
+      saveMessage(errorMessage, 'websearch');
     }
   }
 
