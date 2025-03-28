@@ -6,14 +6,18 @@ import ChatHeader from './ChatHeader'
 import ChatMessages from './ChatMessages'
 import MessageInput from './MessageInput'
 import FeaturesBar from './FeaturesBar'
+import MCPToolsHelp from './MCPToolsHelp'
 import { Message, MessageType, ApiMessage, ChatResponse } from './types'
+import { isMCPCommand, parseCommand, callMCPServer } from '@/lib/mcpService'
 
-export default function ChatInterface() {
+export default function ChatInterface(): React.ReactElement {
+  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon in the message input or type @docs to see available commands.";
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: uuidv4(),
       type: 'ai',
-      text: "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?",
+      text: welcomeMessage,
       timestamp: new Date(),
     }
   ])
@@ -22,11 +26,11 @@ export default function ChatInterface() {
   const [conversationHistory, setConversationHistory] = useState<ApiMessage[]>([
     {
       role: 'assistant',
-      content: "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?"
+      content: welcomeMessage
     }
   ])
 
-  const [isTyping, setIsTyping] = useState(false)
+  const [isTyping, setIsTyping] = useState<boolean>(false)
 
   // Function to send chat message to backend
   const sendChatMessage = async (message: string, history: ApiMessage[]): Promise<ChatResponse> => {
@@ -53,7 +57,7 @@ export default function ChatInterface() {
     }
   }
 
-  const handleSendMessage = async (text: string) => {
+  const handleSendMessage = async (text: string): Promise<void> => {
     // Add user message to UI
     const userMessage: Message = {
       id: uuidv4(),
@@ -74,17 +78,35 @@ export default function ChatInterface() {
         { role: 'user', content: text }
       ];
       
-      // Send message to backend
-      const response = await sendChatMessage(text, conversationHistory)
+      let response: ChatResponse;
+
+      // Check if this is an MCP command
+      if (isMCPCommand(text)) {
+        console.log('Detected MCP command:', text);
+        const command = parseCommand(text);
+        
+        if (command) {
+          // Route to MCP server
+          response = await callMCPServer(command);
+        } else {
+          response = {
+            success: false,
+            error: "Invalid command format. Please use format: @docs [tool] [param1:value1] [param2:value2]"
+          };
+        }
+      } else {
+        // Route to Gemini for normal chat
+        response = await sendChatMessage(text, conversationHistory);
+        
+        // Update conversation history for backend (only for Gemini)
+        if (response.success && response.conversationHistory) {
+          setConversationHistory(response.conversationHistory);
+        }
+      }
       
       // Handle error
       if (!response.success || !response.reply) {
-        throw new Error(response.error || 'Failed to get response')
-      }
-      
-      // Update conversation history for backend
-      if (response.conversationHistory) {
-        setConversationHistory(response.conversationHistory)
+        throw new Error(response.error || 'Failed to get response');
       }
       
       // Add AI response to UI
@@ -95,22 +117,22 @@ export default function ChatInterface() {
         timestamp: new Date(),
       }
       
-      setIsTyping(false)
-      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse])
+      setIsTyping(false);
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse]);
       
     } catch (error) {
-      console.error('Error getting response:', error)
+      console.error('Error getting response:', error);
       
       // Show error message
       const errorMessage: Message = {
         id: uuidv4(),
         type: 'ai',
-        text: 'Sorry, I encountered an error. Please try again later.',
+        text: error instanceof Error ? error.message : 'Sorry, I encountered an error. Please try again later.',
         timestamp: new Date(),
       }
       
-      setIsTyping(false)
-      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage])
+      setIsTyping(false);
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage]);
     }
   }
 
@@ -133,7 +155,12 @@ export default function ChatInterface() {
   return (
     <div id="chat-interface" className="min-h-screen bg-gray-50 flex flex-col">
       <ChatHeader />
-      <ChatMessages messages={messages} />
+      <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
+        <div className="max-w-4xl mx-auto">
+          <MCPToolsHelp />
+        </div>
+        <ChatMessages messages={messages} />
+      </div>
       <MessageInput onSendMessage={handleSendMessage} />
       <FeaturesBar />
     </div>
