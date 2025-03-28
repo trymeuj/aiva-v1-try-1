@@ -51,10 +51,15 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
         )
       
       case 'ai':
-        // Format asterisks as markdown bullet points
-        const formattedText = message.text
-          .replace(/\*\*\*/g, '\n\n* ')  // Convert *** to markdown bullet points
-          .replace(/\*\*/g, '**');        // Keep regular bold formatting
+        // Check if the message is a search result
+        const isSearchResult = message.text.includes('## Search Results for:');
+        
+        // Format asterisks as markdown bullet points for non-search results
+        const formattedText = isSearchResult 
+          ? message.text  // Don't modify search results formatting
+          : message.text
+              .replace(/\*\*\*/g, '\n\n* ')  // Convert *** to markdown bullet points
+              .replace(/\*\*/g, '**');        // Keep regular bold formatting
 
         return (
           <div key={message.id} className="flex items-start">
@@ -66,9 +71,32 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
               </div>
             </div>
             <div className="space-y-3 max-w-md">
-              <div className="bg-white rounded-2xl rounded-tl-none p-4 shadow-sm">
-                <div className="text-gray-800 prose prose-sm">
-                  <ReactMarkdown>
+              <div className={`bg-white rounded-2xl rounded-tl-none p-4 shadow-sm ${isSearchResult ? 'overflow-x-auto w-full' : ''}`}>
+                <div className={`text-gray-800 ${isSearchResult ? 'prose-sm md:prose' : 'prose prose-sm'}`}>
+                  <ReactMarkdown
+                    components={{
+                      a: ({ node, ...props }) => (
+                        <a 
+                          {...props} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        />
+                      ),
+                      h3: ({ node, ...props }) => (
+                        <h3 
+                          {...props}
+                          className="text-lg font-semibold mt-3 mb-1"
+                        />
+                      ),
+                      h2: ({ node, ...props }) => (
+                        <h2 
+                          {...props}
+                          className="text-xl font-bold mb-3 text-gray-900"
+                        />
+                      )
+                    }}
+                  >
                     {formattedText}
                   </ReactMarkdown>
                 </div>

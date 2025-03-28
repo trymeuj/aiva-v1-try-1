@@ -143,7 +143,7 @@ export default function ChatInterface(): React.ReactElement {
     const userMessage: Message = {
       id: uuidv4(),
       type: 'user',
-      text: `🔍 Search: ${query}`,
+      text: `🔍 Searching for: "${query}"`,
       timestamp: new Date(),
     }
     

@@ -85,11 +85,16 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
 
   return (
     <div className="bg-white border-t border-gray-200 p-4 relative">
-      <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex items-end">
+      {isSearchMode && (
+        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-3/4 bg-blue-100 text-blue-700 text-xs font-medium px-3 py-0.5 rounded-full shadow-sm">
+          Web Search Mode
+        </div>
+      )}
+      <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex items-center">
         {/* Docs button */}
         <button 
           type="button"
-          className="p-2 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 mr-2"
+          className="p-2 mr-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
           title="Insert @docs command"
           onClick={(e) => {
             e.stopPropagation()
@@ -107,10 +112,12 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
         {/* Search button */}
         <button 
           type="button"
-          className={`p-2 rounded-full hover:bg-gray-100 mr-2 ${
-            isSearchMode ? 'text-blue-600 bg-blue-100' : 'text-gray-400 hover:text-gray-600'
+          className={`p-2 mr-3 rounded-full ${
+            isSearchMode 
+              ? 'text-blue-600 bg-blue-100 ring-2 ring-blue-300' 
+              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
           }`}
-          title="Toggle search mode"
+          title={isSearchMode ? "Exit search mode" : "Enable web search"}
           onClick={toggleSearchMode}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -118,14 +125,12 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
           </svg>
         </button>
 
-        <div className="flex-1 border border-gray-300 rounded-lg flex items-center relative">
+        <div className="flex-1 border border-gray-300 rounded-lg flex items-center">
           <input 
             ref={inputRef}
             type="text" 
             placeholder={isSearchMode ? "Search the web..." : "Type your message... (Use @docs for document commands)"}
-            className={`flex-1 p-3 bg-transparent outline-none rounded-l-lg ${
-              isSearchMode ? 'border-l-4 border-blue-500 pl-2' : ''
-            }`}
+            className="flex-1 p-3 bg-transparent outline-none rounded-lg"
             value={message}
             onChange={(e) => handleInputChange(e.target.value)}
             onClick={(e) => e.stopPropagation()}
@@ -168,6 +173,8 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
           className={`ml-2 p-3 text-white rounded-lg ${
             isSearchMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'
           }`}
+          disabled={!message.trim()}
+          title={isSearchMode ? "Search the web" : "Send message"}
         >
           {isSearchMode ? (
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

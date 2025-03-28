@@ -66,16 +66,18 @@ class GoogleSearchClient:
             if "items" not in search_data or not search_data["items"]:
                 return f"No results found for query: '{query}'"
             
-            formatted_results = [f"## Search Results for: '{query}'\n"]
+            formatted_results = [f"## 🔍 Web Search Results: '{query}'\n"]
             
             for i, item in enumerate(search_data["items"], 1):
                 title = item.get("title", "No title")
                 link = item.get("link", "No link")
                 snippet = item.get("snippet", "No description").replace("\n", " ")
+                displayLink = item.get("displayLink", "")
                 
-                result = f"### {i}. {title}\n"
-                result += f"**Link**: {link}\n"
-                result += f"**Description**: {snippet}\n\n"
+                # Format with clickable links and better formatting
+                result = f"### {i}. [{title}]({link})\n"
+                result += f"📎 *{displayLink}*\n\n"
+                result += f"{snippet}\n\n"
                 
                 formatted_results.append(result)
             
