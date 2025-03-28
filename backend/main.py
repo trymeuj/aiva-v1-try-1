@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 from gemini import GeminiChatbot
+from google_search import GoogleSearchClient
 
 # Initialize FastAPI app
 app = FastAPI(title="Chatbot API")
@@ -16,8 +17,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize the chatbot
+# Initialize the chatbot and search client
 chatbot = GeminiChatbot()
+search_client = GoogleSearchClient()
 
 # Define data models
 class Message(BaseModel):
@@ -27,6 +29,10 @@ class Message(BaseModel):
 class ChatRequest(BaseModel):
     message: str
     conversationHistory: Optional[List[Message]] = []
+
+class SearchRequest(BaseModel):
+    query: str
+    num_results: Optional[int] = 5
 
 class ChatResponse(BaseModel):
     success: bool
@@ -56,6 +62,26 @@ async def chat(request: ChatRequest):
             success=True,
             reply=reply,
             conversationHistory=updated_history
+        )
+        
+    except Exception as e:
+        return ChatResponse(
+            success=False,
+            error=str(e)
+        )
+
+@app.post("/api/search", response_model=ChatResponse)
+async def search(request: SearchRequest):
+    try:
+        query = request.query
+        num_results = request.num_results
+        
+        # Perform search and format results
+        search_results = await search_client.format_search_results(query, num_results)
+        
+        return ChatResponse(
+            success=True,
+            reply=search_results
         )
         
     except Exception as e:

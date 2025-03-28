@@ -9,9 +9,10 @@ import FeaturesBar from './FeaturesBar'
 import MCPToolsHelp from './MCPToolsHelp'
 import { Message, MessageType, ApiMessage, ChatResponse } from './types'
 import { isMCPCommand, parseCommand, callMCPServer } from '@/lib/mcpService'
+import { searchWeb } from '@/lib/searchService'
 
 export default function ChatInterface(): React.ReactElement {
-  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon in the message input or type @docs to see available commands.";
+  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon in the message input or type @docs to see available commands. Click the search icon to search the web.";
 
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -136,6 +137,57 @@ export default function ChatInterface(): React.ReactElement {
     }
   }
 
+  // Function to handle web search
+  const handleSearch = async (query: string): Promise<void> => {
+    // Add user message to UI with search indicator
+    const userMessage: Message = {
+      id: uuidv4(),
+      type: 'user',
+      text: `🔍 Search: ${query}`,
+      timestamp: new Date(),
+    }
+    
+    setMessages(prev => [...prev, userMessage])
+    
+    // Show typing indicator
+    setIsTyping(true)
+    
+    try {
+      // Call the search API
+      const response = await searchWeb(query);
+      
+      // Handle error
+      if (!response.success || !response.reply) {
+        throw new Error(response.error || 'Failed to get search results');
+      }
+      
+      // Add search results to UI
+      const searchResponse: Message = {
+        id: uuidv4(),
+        type: 'ai',
+        text: response.reply,
+        timestamp: new Date(),
+      }
+      
+      setIsTyping(false);
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), searchResponse]);
+      
+    } catch (error) {
+      console.error('Error getting search results:', error);
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: uuidv4(),
+        type: 'ai',
+        text: error instanceof Error ? error.message : 'Sorry, I encountered an error during the search. Please try again later.',
+        timestamp: new Date(),
+      }
+      
+      setIsTyping(false);
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage]);
+    }
+  }
+
   // Add typing indicator when AI is typing
   useEffect(() => {
     if (isTyping) {
@@ -161,7 +213,7 @@ export default function ChatInterface(): React.ReactElement {
         </div>
         <ChatMessages messages={messages} />
       </div>
-      <MessageInput onSendMessage={handleSendMessage} />
+      <MessageInput onSendMessage={handleSendMessage} onSearch={handleSearch} />
       <FeaturesBar />
     </div>
   )
