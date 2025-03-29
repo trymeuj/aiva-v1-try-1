@@ -1,74 +1,240 @@
 'use client'
 
-import { useState, useRef, useEffect, FormEvent } from 'react'
+import { useState, useRef, useEffect, FormEvent, KeyboardEvent } from 'react'
 
 interface MessageInputProps {
   onSendMessage: (message: string) => void
   onSearch: (query: string) => void
-  onResearch: (query: string) => void
 }
 
 interface CommandSuggestion {
   command: string;
   description: string;
+  parameters: CommandParameter[];
 }
 
-export default function MessageInput({ onSendMessage, onSearch, onResearch }: MessageInputProps): React.ReactElement {
+interface CommandParameter {
+  name: string;
+  description: string;
+  required: boolean;
+}
+
+export default function MessageInput({ onSendMessage, onSearch }: MessageInputProps): React.ReactElement {
   const [message, setMessage] = useState<string>('')
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
-  const [searchMode, setSearchMode] = useState<'none' | 'search' | 'research'>('none')
-  const [isExpanded, setIsExpanded] = useState<boolean>(false)
-  const [showExpandButton, setShowExpandButton] = useState<boolean>(false)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const containerRef = useRef<HTMLDivElement>(null)
-  
-  // Constants for expansion
-  const LONG_TEXT_THRESHOLD = 100; // Characters before showing expand button
+  const [isSearchMode, setIsSearchMode] = useState<boolean>(false)
+  const [ghostText, setGhostText] = useState<string>('')
+  const [selectedCommand, setSelectedCommand] = useState<string | null>(null)
+  const [currentParameterIndex, setCurrentParameterIndex] = useState<number>(0)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const ghostRef = useRef<HTMLSpanElement>(null)
 
+  // Enhanced commands with parameter information
   const suggestions: CommandSuggestion[] = [
-    { command: 'create-doc', description: 'Create a new Google Doc' },
-    { command: 'read-doc', description: 'Read content from a Google Doc' },
-    { command: 'rewrite-document', description: 'Update a Google Doc' },
-    { command: 'read-comments', description: 'View comments on a Google Doc' },
-    { command: 'create-comment', description: 'Add a comment to a Google Doc' },
+    { 
+      command: 'create-doc', 
+      description: 'Create a new Google Doc', 
+      parameters: [
+        { name: 'title', description: 'Title of the document', required: true },
+        { name: 'org', description: 'Organization domain', required: false },
+        { name: 'role', description: 'Permission role (e.g. writer, reader)', required: false }
+      ]
+    },
+    { 
+      command: 'read-doc', 
+      description: 'Read content from a Google Doc', 
+      parameters: [
+        { name: 'document_id', description: 'ID of the document to read', required: true }
+      ]
+    },
+    { 
+      command: 'rewrite-document', 
+      description: 'Update a Google Doc', 
+      parameters: [
+        { name: 'document_id', description: 'ID of the document to update', required: true },
+        { name: 'final_text', description: 'New content for the document', required: true }
+      ]
+    },
+    { 
+      command: 'read-comments', 
+      description: 'View comments on a Google Doc', 
+      parameters: [
+        { name: 'document_id', description: 'ID of the document', required: true }
+      ]
+    },
+    { 
+      command: 'create-comment', 
+      description: 'Add a comment to a Google Doc', 
+      parameters: [
+        { name: 'document_id', description: 'ID of the document', required: true },
+        { name: 'content', description: 'Comment content', required: true }
+      ]
+    },
+    { 
+      command: 'reply-comment', 
+      description: 'Reply to a comment on a document', 
+      parameters: [
+        { name: 'document_id', description: 'ID of the document', required: true },
+        { name: 'comment_id', description: 'ID of the comment to reply to', required: true },
+        { name: 'reply', description: 'Reply content', required: true }
+      ]
+    },
+    { 
+      command: 'delete-reply', 
+      description: 'Delete a reply from a comment', 
+      parameters: [
+        { name: 'document_id', description: 'ID of the document', required: true },
+        { name: 'comment_id', description: 'ID of the comment', required: true },
+        { name: 'reply_id', description: 'ID of the reply to delete', required: true }
+      ]
+    }
   ]
+
+  // Get parameters for the currently selected command
+  const getCommandParameters = (): CommandParameter[] => {
+    if (!selectedCommand) return [];
+    const command = suggestions.find(s => s.command === selectedCommand);
+    return command ? command.parameters : [];
+  }
 
   const handleSubmit = (e: FormEvent): void => {
     e.preventDefault()
     if (message.trim()) {
-      if (searchMode === 'search') {
+      if (isSearchMode) {
         onSearch(message)
-      } else if (searchMode === 'research') {
-        onResearch(message)
       } else {
         onSendMessage(message)
       }
       setMessage('')
+      setGhostText('')
       setShowSuggestions(false)
-      setIsExpanded(false)
-      setShowExpandButton(false)
+      setSelectedCommand(null)
+      setCurrentParameterIndex(0)
     }
   }
 
-  // Check if we need to show the expand button based on text length
-  useEffect(() => {
-    const needsExpand = message.length > LONG_TEXT_THRESHOLD;
-    setShowExpandButton(needsExpand);
-    
-    // If text becomes short again while expanded, collapse
-    if (!needsExpand && isExpanded) {
-      setIsExpanded(false);
+  // Update ghost text suggestions based on current input
+  const updateGhostText = () => {
+    if (!selectedCommand) {
+      setGhostText('');
+      return;
     }
-  }, [message, isExpanded]);
+
+    // Check if we still have the command in the message
+    if (!message.includes(`@docs ${selectedCommand}`)) {
+      setSelectedCommand(null);
+      setGhostText('');
+      return;
+    }
+
+    const parameters = getCommandParameters();
+    if (parameters.length <= currentParameterIndex) {
+      setGhostText('');
+      return;
+    }
+
+    // Parse the current message to find the command and already entered parameters
+    const regex = new RegExp(`@docs\\s+${selectedCommand}\\s+(.*?)$`);
+    const match = message.match(regex);
+    const paramsText = match ? match[1] : '';
+
+    // Look for parameters in the format param:"value"
+    const paramRegex = /(\w+):"([^"]*)"/g;
+    const params: Record<string, string> = {};
+    let paramMatch;
+    
+    // Extract all parameters that have been entered
+    while ((paramMatch = paramRegex.exec(paramsText)) !== null) {
+      const [_, paramName, paramValue] = paramMatch;
+      params[paramName] = paramValue;
+    }
+    
+    // Check for incomplete parameter (parameter with quotes but not closed)
+    const incompleteParamMatch = paramsText.match(/(\w+):"([^"]*)$/);
+    
+    if (incompleteParamMatch) {
+      // Currently typing a parameter value
+      const [_, paramName, paramValue] = incompleteParamMatch;
+      
+      // If there's some value already typed AND there are more parameters to suggest
+      if (paramValue && parameters.length > Object.keys(params).length + 1) {
+        // Find index of current parameter
+        const currentParamIndex = parameters.findIndex(p => p.name === paramName);
+        if (currentParamIndex !== -1 && currentParamIndex + 1 < parameters.length) {
+          // Suggest the next parameter
+          const nextParam = parameters[currentParamIndex + 1];
+          setGhostText(`" ${nextParam.name}:"" `);
+          return;
+        }
+      }
+      
+      // Otherwise don't show suggestion while typing a parameter value
+      setGhostText('');
+    } else {
+      // Not currently typing inside quotes, check for missing parameters
+      
+      // Find first parameter that hasn't been entered yet
+      for (let i = 0; i < parameters.length; i++) {
+        const param = parameters[i];
+        if (!params[param.name]) {
+          // This parameter hasn't been entered, suggest it
+          setGhostText(`${param.name}:"" `);
+          setCurrentParameterIndex(i);
+          return;
+        }
+      }
+      
+      // All parameters have been entered
+      setGhostText('');
+    }
+  }
 
   const handleInputChange = (text: string): void => {
-    setMessage(text)
+    setMessage(text);
     
-    // Show suggestions if the user types @docs
-    if (text.endsWith('@docs') || text.includes('@docs ')) {
-      setShowSuggestions(true)
+    // Clear ghost text when input is cleared
+    if (!text.trim()) {
+      setGhostText('');
+      setSelectedCommand(null);
+      setCurrentParameterIndex(0);
+      return;
+    }
+    
+    // Show command suggestions if the user types @docs
+    if (text.includes('@docs ') && !selectedCommand) {
+      const commandParts = text.split('@docs ')[1].trim().split(' ');
+      
+      if (commandParts.length === 1 && !commandParts[0].includes(':')) {
+        setShowSuggestions(true);
+      } else {
+        setShowSuggestions(false);
+      }
+    } else if (text.endsWith('@docs')) {
+      setShowSuggestions(true);
     } else {
-      setShowSuggestions(false)
+      setShowSuggestions(false);
+    }
+    
+    // Check if a command is selected or being typed
+    if (selectedCommand) {
+      // If we deleted the command, clear everything
+      if (!text.includes(`@docs ${selectedCommand}`)) {
+        setSelectedCommand(null);
+        setGhostText('');
+        setCurrentParameterIndex(0);
+      } else {
+        updateGhostText();
+      }
+    } else if (text.includes('@docs ')) {
+      // Check if user has typed a full command
+      const commandPart = text.split('@docs ')[1].trim().split(' ')[0];
+      const matchedCommand = suggestions.find(s => s.command === commandPart);
+      
+      if (matchedCommand) {
+        setSelectedCommand(matchedCommand.command);
+        setCurrentParameterIndex(0);
+        updateGhostText();
+      }
     }
   }
 
@@ -76,94 +242,105 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
     // If @docs is already in the message
     if (message.includes('@docs')) {
       // Replace @docs with @docs command
-      setMessage(message.replace('@docs', `@docs ${command} `))
+      setMessage(message.replace('@docs', `@docs ${command} `));
     } else {
       // Otherwise append the command
-      setMessage(`${message}@docs ${command} `)
+      setMessage(`${message}@docs ${command} `);
     }
     
-    // Hide suggestions and focus on the input
-    setShowSuggestions(false)
-    textareaRef.current?.focus()
+    // Set the selected command
+    setSelectedCommand(command);
+    setShowSuggestions(false);
+    setCurrentParameterIndex(0);
+    
+    // Update ghost text for parameter suggestion
+    setTimeout(() => {
+      updateGhostText();
+      // Focus on the input
+      inputRef.current?.focus();
+    }, 0);
   }
 
-  // Toggle search modes
-  const toggleSearchMode = (mode: 'search' | 'research'): void => {
-    setSearchMode(searchMode === mode ? 'none' : mode);
-    textareaRef.current?.focus()
+  // Complete the current ghost text suggestion
+  const completeGhostText = (): void => {
+    if (!ghostText) return;
+    
+    const newMessage = message + ghostText;
+    setMessage(newMessage);
+    
+    // When adding a parameter, temporarily hide ghost text until user starts typing a value
+    setGhostText('');
+    
+    // Focus back on input with cursor at the right position
+    setTimeout(() => {
+      const inputElement = inputRef.current;
+      if (inputElement) {
+        // Position cursor between quotes to make it easy to type the value
+        const cursorPosition = message.length + ghostText.indexOf('""') + 1;
+        inputElement.focus();
+        inputElement.setSelectionRange(cursorPosition, cursorPosition);
+      }
+    }, 0);
   }
 
-  // Toggle expanded view
-  const toggleExpand = (): void => {
-    setIsExpanded(!isExpanded);
-    // Focus the textarea and place cursor at the end
-    if (!isExpanded) {
-      setTimeout(() => {
-        if (textareaRef.current) {
-          textareaRef.current.focus();
-          const length = textareaRef.current.value.length;
-          textareaRef.current.setSelectionRange(length, length);
-        }
-      }, 0);
+  // Handle keyboard shortcuts
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    // Tab key for parameter completion
+    if (e.key === 'Tab' && ghostText) {
+      e.preventDefault();
+      completeGhostText();
     }
+  }
+
+  // Toggle search mode
+  const toggleSearchMode = (): void => {
+    setIsSearchMode(!isSearchMode);
+    setGhostText('');
+    inputRef.current?.focus();
   }
 
   // Close suggestions when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      // Don't close if clicking on the container or its children
-      if (containerRef.current && containerRef.current.contains(e.target as Node)) {
-        return;
-      }
+    const handleClickOutside = () => {
       setShowSuggestions(false);
-      // Don't automatically collapse the expanded view on outside click
     }
     
-    document.addEventListener('click', handleClickOutside)
+    document.addEventListener('click', handleClickOutside);
     return () => {
-      document.removeEventListener('click', handleClickOutside)
+      document.removeEventListener('click', handleClickOutside);
     }
   }, []);
 
+  // Synchronize ghost text position with input text and handle message changes
+  useEffect(() => {
+    // First, update the ghost text based on the current message
+    if (selectedCommand) {
+      updateGhostText();
+    }
+
+    // Then, handle the ghost text positioning
+    if (inputRef.current && ghostRef.current && ghostText) {
+      // Measure the width of the input text
+      const canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (context) {
+        const computedStyle = window.getComputedStyle(inputRef.current);
+        context.font = computedStyle.font;
+        const textWidth = context.measureText(message).width;
+        
+        // Set the left position of the ghost text
+        ghostRef.current.style.left = `${textWidth + 8}px`; // 8px is the padding
+      }
+    }
+  }, [message, selectedCommand, ghostText]);
+
   return (
-    <div ref={containerRef} className="bg-white border-t border-gray-200 p-4 relative">
-      {searchMode !== 'none' && (
+    <div className="bg-white border-t border-gray-200 p-4 relative">
+      {isSearchMode && (
         <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-3/4 bg-blue-100 text-blue-700 text-xs font-medium px-3 py-0.5 rounded-full shadow-sm">
-          {searchMode === 'search' ? 'Web Search Mode' : 'Deep Research Mode'}
+          Web Search Mode
         </div>
       )}
-      
-      {/* Expanded floating textarea */}
-      {isExpanded && (
-        <div className="absolute bottom-full left-0 right-0 bg-white border border-gray-300 rounded-t-lg shadow-lg z-10">
-          <div className="flex justify-between items-center p-2 border-b border-gray-200">
-            <span className="text-sm font-medium text-gray-700">Edit Message</span>
-            <button 
-              type="button" 
-              className="text-gray-500 hover:text-gray-700"
-              onClick={toggleExpand}
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
-          <textarea
-            ref={textareaRef}
-            value={message}
-            onChange={(e) => handleInputChange(e.target.value)}
-            className="w-full p-4 min-h-[200px] focus:outline-none resize-none"
-            placeholder={
-              searchMode === 'search' 
-                ? "Search the web..." 
-                : searchMode === 'research'
-                  ? "Research a topic in depth..."
-                  : "Type your message... (Use @docs for document commands)"
-            }
-          />
-        </div>
-      )}
-      
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex items-center">
         {/* Docs button */}
         <button 
@@ -174,8 +351,8 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
             e.stopPropagation()
             setMessage(message + '@docs ')
             setShowSuggestions(true)
-            setSearchMode('none')
-            textareaRef.current?.focus()
+            setIsSearchMode(false)
+            inputRef.current?.focus()
           }}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -186,72 +363,50 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
         {/* Search button */}
         <button 
           type="button"
-          className={`p-2 mr-1 rounded-full ${
-            searchMode === 'search' 
+          className={`p-2 mr-3 rounded-full ${
+            isSearchMode 
               ? 'text-blue-600 bg-blue-100 ring-2 ring-blue-300' 
               : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
           }`}
-          title={searchMode === 'search' ? "Exit search mode" : "Enable web search"}
-          onClick={() => toggleSearchMode('search')}
+          title={isSearchMode ? "Exit search mode" : "Enable web search"}
+          onClick={toggleSearchMode}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
           </svg>
         </button>
 
-        {/* Research button */}
-        <button 
-          type="button"
-          className={`p-2 mr-3 rounded-full ${
-            searchMode === 'research' 
-              ? 'text-green-600 bg-green-100 ring-2 ring-green-300' 
-              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
-          }`}
-          title={searchMode === 'research' ? "Exit research mode" : "Enable deep research"}
-          onClick={() => toggleSearchMode('research')}
-        >
-          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
-          </svg>
-        </button>
-
         <div className="flex-1 border border-gray-300 rounded-lg flex items-center relative">
-          {/* Normal single-line input (always visible) */}
-          <input 
-            type="text" 
-            className="flex-1 p-3 bg-transparent outline-none rounded-lg overflow-hidden text-ellipsis"
-            value={message}
-            onChange={(e) => handleInputChange(e.target.value)}
-            placeholder={
-              searchMode === 'search' 
-                ? "Search the web..." 
-                : searchMode === 'research'
-                  ? "Research a topic in depth..."
-                  : "Type your message... (Use @docs for document commands)"
-            }
-            readOnly={isExpanded}
-            onClick={() => {
-              if (showExpandButton && !isExpanded) {
-                toggleExpand();
-              }
-            }}
-          />
+          <div className="relative flex-1">
+            <input 
+              ref={inputRef}
+              type="text" 
+              placeholder={isSearchMode ? "Search the web..." : "Type your message... (Use @docs for document commands)"}
+              className="w-full p-3 bg-transparent outline-none rounded-lg"
+              value={message}
+              onChange={(e) => handleInputChange(e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={handleKeyDown}
+            />
+            {/* Ghost text for inline parameter suggestion */}
+            {ghostText && (
+              <span 
+                ref={ghostRef}
+                className="absolute top-0 p-3 text-gray-400 pointer-events-none whitespace-pre"
+                style={{ left: '8px' }} // This will be adjusted by the effect
+              >
+                {ghostText}
+              </span>
+            )}
+          </div>
           
-          {/* Expand button */}
-          {showExpandButton && !isExpanded && (
-            <button 
-              type="button"
-              className="p-2 mx-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
-              onClick={toggleExpand}
-              title="Expand editor"
-            >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
-              </svg>
-            </button>
+          {/* Tab hint */}
+          {ghostText && (
+            <div className="px-2 py-1 mr-2 bg-gray-100 text-gray-500 text-xs rounded">
+              Tab
+            </div>
           )}
           
-          {/* Emoji button */}
           <button 
             type="button" 
             className="p-3 text-gray-400 hover:text-gray-600"
@@ -261,10 +416,10 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
             </svg>
           </button>
           
-          {/* Suggestions dropdown */}
+          {/* Command suggestions dropdown */}
           {showSuggestions && (
             <div 
-              className="absolute bottom-full left-0 w-full bg-white rounded-lg shadow-lg border border-gray-200 mb-1 z-20"
+              className="absolute bottom-full left-0 w-full bg-white rounded-lg shadow-lg border border-gray-200 mb-1 z-10"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-2">
@@ -278,6 +433,9 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
                     >
                       <div className="font-medium text-blue-600">{suggestion.command}</div>
                       <div className="text-xs text-gray-500">{suggestion.description}</div>
+                      <div className="text-xs text-gray-400 mt-1">
+                        Parameters: {suggestion.parameters.map(p => p.name).join(', ')}
+                      </div>
                     </li>
                   ))}
                 </ul>
@@ -288,28 +446,14 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
         <button 
           type="submit"
           className={`ml-2 p-3 text-white rounded-lg ${
-            searchMode === 'search' 
-              ? 'bg-blue-600 hover:bg-blue-700' 
-              : searchMode === 'research'
-                ? 'bg-green-600 hover:bg-green-700'
-                : 'bg-blue-600 hover:bg-blue-700'
+            isSearchMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'
           }`}
           disabled={!message.trim()}
-          title={
-            searchMode === 'search' 
-              ? "Search the web" 
-              : searchMode === 'research'
-                ? "Research in depth"
-                : "Send message"
-          }
+          title={isSearchMode ? "Search the web" : "Send message"}
         >
-          {searchMode === 'search' ? (
+          {isSearchMode ? (
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
-            </svg>
-          ) : searchMode === 'research' ? (
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
             </svg>
           ) : (
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
