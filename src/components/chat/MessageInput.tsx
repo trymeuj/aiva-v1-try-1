@@ -28,8 +28,39 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null)
   const [commandType, setCommandType] = useState<'docs' | 'gmail' | 'calendar' | null>(null)
   const [currentParameterIndex, setCurrentParameterIndex] = useState<number>(0)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [isExpanded, setIsExpanded] = useState<boolean>(false)
+  const [showExpandButton, setShowExpandButton] = useState<boolean>(false)
+  const textAreaRef = useRef<HTMLTextAreaElement>(null)
   const ghostRef = useRef<HTMLSpanElement>(null)
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  // Auto-resize the textarea based on content
+  useEffect(() => {
+    const textArea = textAreaRef.current;
+    if (textArea) {
+      // Reset height to get the correct scrollHeight
+      textArea.style.height = 'auto';
+      
+      // Calculate how many lines we have
+      const lineHeight = parseInt(getComputedStyle(textArea).lineHeight);
+      const currentLines = Math.floor(textArea.scrollHeight / lineHeight);
+      
+      // Show expand button if we have more than 5 lines
+      setShowExpandButton(currentLines > 5);
+      
+      // Set the height based on content but constrain it if not expanded
+      if (!isExpanded && currentLines > 5) {
+        textArea.style.height = `${lineHeight * 5}px`;
+      } else {
+        textArea.style.height = `${textArea.scrollHeight}px`;
+      }
+    }
+  }, [message, isExpanded]);
+
+  // Function to toggle expanded state
+  const toggleExpanded = () => {
+    setIsExpanded(!isExpanded);
+  };
 
   // Enhanced commands with parameter information for docs
   const docsSuggestions: CommandSuggestion[] = [
@@ -200,9 +231,31 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
       setSelectedCommand(null)
       setCommandType(null)
       setCurrentParameterIndex(0)
+      setIsExpanded(false)
     }
   }
 
+  // Add this function to handle emoji insertion
+  const insertEmoji = (emoji: string) => {
+    // Insert emoji at cursor position
+    const textarea = textAreaRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const newMessage = message.substring(0, start) + emoji + message.substring(end);
+      setMessage(newMessage);
+      
+      // Set cursor position after the inserted emoji
+      setTimeout(() => {
+        textarea.focus();
+        textarea.selectionStart = start + emoji.length;
+        textarea.selectionEnd = start + emoji.length;
+      }, 0);
+    }
+    
+    // Hide emoji picker
+    setShowEmojiPicker(false);
+  };
   // Get parameters for the currently selected command
   const getCommandParameters = (): CommandParameter[] => {
     if (!selectedCommand || !commandType) return [];
@@ -437,7 +490,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
     setTimeout(() => {
       updateGhostText();
       // Focus on the input
-      inputRef.current?.focus();
+      textAreaRef.current?.focus();
     }, 0);
   }
 
@@ -453,7 +506,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
     
     // Focus back on input with cursor at the right position
     setTimeout(() => {
-      const inputElement = inputRef.current;
+      const inputElement = textAreaRef.current;
       if (inputElement) {
         // Position cursor between quotes to make it easy to type the value
         const cursorPosition = message.length + ghostText.indexOf('""') + 1;
@@ -464,11 +517,17 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
   }
 
   // Handle keyboard shortcuts
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>): void => {
     // Tab key for parameter completion
     if (e.key === 'Tab' && ghostText) {
       e.preventDefault();
       completeGhostText();
+    }
+    
+    // Enter without shift to submit
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(e);
     }
   }
 
@@ -476,7 +535,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
   const toggleSearchMode = (): void => {
     setIsSearchMode(!isSearchMode);
     setGhostText('');
-    inputRef.current?.focus();
+    textAreaRef.current?.focus();
   }
 
   // Close suggestions when clicking outside
@@ -492,6 +551,8 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
   }, []);
 
   // Synchronize ghost text position with input text and handle message changes
+  
+  // Synchronize ghost text position with input text and handle message changes
   useEffect(() => {
     // First, update the ghost text based on the current message
     if (selectedCommand) {
@@ -499,17 +560,37 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
     }
 
     // Then, handle the ghost text positioning
-    if (inputRef.current && ghostRef.current && ghostText) {
-      // Measure the width of the input text
+    // Then, handle the ghost text positioning
+    if (textAreaRef.current && ghostRef.current && ghostText) {
+      // Position ghost text at cursor position
+      const textArea = textAreaRef.current;
+      const cursorPosition = textArea.selectionStart;
+      
+      // Calculate the line and column of the cursor
+      const textBeforeCursor = message.substring(0, cursorPosition);
+      const lines = textBeforeCursor.split('\n');
+      const currentLineIndex = lines.length - 1;
+      const currentLine = lines[currentLineIndex];
+      
+      // Measure the width of the current line
       const canvas = document.createElement('canvas');
       const context = canvas.getContext('2d');
       if (context) {
-        const computedStyle = window.getComputedStyle(inputRef.current);
+        const computedStyle = window.getComputedStyle(textArea);
         context.font = computedStyle.font;
-        const textWidth = context.measureText(message).width;
+        const textWidth = context.measureText(currentLine).width;
         
-        // Set the left position of the ghost text
-        ghostRef.current.style.left = `${textWidth + 8}px`; // 8px is the padding
+        // Get line height and padding
+        const lineHeight = parseInt(computedStyle.lineHeight || '20');
+        const paddingTop = parseInt(computedStyle.paddingTop || '0');
+        
+        // Calculate position based on cursor position (line and column)
+        const top = paddingTop + (currentLineIndex * lineHeight);
+        
+        // Add extra space between cursor and ghost text (6px)
+        ghostRef.current.style.left = `${textWidth + 14}px`;
+        ghostRef.current.style.top = `${top}px`;
+        ghostRef.current.style.lineHeight = `${lineHeight}px`;
       }
     }
   }, [message, selectedCommand, ghostText]);
@@ -547,7 +628,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
             setShowSuggestions(true)
             setCommandType('docs')
             setIsSearchMode(false)
-            inputRef.current?.focus()
+            textAreaRef.current?.focus()
           }}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -566,7 +647,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
             setShowSuggestions(true)
             setCommandType('gmail')
             setIsSearchMode(false)
-            inputRef.current?.focus()
+            textAreaRef.current?.focus()
           }}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -585,7 +666,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
             setShowSuggestions(true)
             setCommandType('calendar')
             setIsSearchMode(false)
-            inputRef.current?.focus()
+            textAreaRef.current?.focus()
           }}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -611,44 +692,94 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
 
         <div className="flex-1 border border-gray-300 rounded-lg flex items-center relative">
           <div className="relative flex-1">
-            <input 
-              ref={inputRef}
-              type="text" 
+            {/* Replaced input with textarea */}
+            <textarea 
+              ref={textAreaRef}
               placeholder={isSearchMode ? "Search the web..." : "Type your message... (Use @docs, @gmail, or @calendar for commands)"}
-              className="w-full p-3 bg-transparent outline-none rounded-lg"
+              className="w-full p-3 bg-transparent outline-none rounded-lg resize-none overflow-y-auto"
               value={message}
               onChange={(e) => handleInputChange(e.target.value)}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={handleKeyDown}
+              rows={1}
+              style={{ maxHeight: isExpanded ? '300px' : '120px' }}
             />
             {/* Ghost text for inline parameter suggestion */}
             {ghostText && (
               <span 
                 ref={ghostRef}
-                className="absolute top-0 p-3 text-gray-400 pointer-events-none whitespace-pre"
-                style={{ left: '8px' }} // This will be adjusted by the effect
+                className="absolute top-3 text-gray-400 pointer-events-none whitespace-pre"
+                style={{ left: '8px' }} // Will be adjusted by the effect
               >
                 {ghostText}
               </span>
+            )}
+            
+            {/* Expand/collapse button when there are more than 5 lines */}
+            {showExpandButton && (
+              <button
+                type="button"
+                className="absolute bottom-1 right-1 p-1 text-gray-400 hover:text-gray-600 bg-white bg-opacity-80 rounded-md"
+                onClick={toggleExpanded}
+                title={isExpanded ? "Collapse" : "Expand"}
+              >
+                <svg 
+                  className={`h-4 w-4 transform transition-transform ${isExpanded ? 'rotate-180' : ''}`} 
+                  fill="none" 
+                  stroke="currentColor" 
+                  viewBox="0 0 24 24" 
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d={isExpanded ? "M5 15l7-7 7 7" : "M19 9l-7 7-7-7"} />
+                </svg>
+              </button>
             )}
           </div>
           
           {/* Tab hint */}
           {ghostText && (
             <div className="px-2 py-1 mr-2 bg-gray-100 text-gray-500 text-xs rounded">
-              Tab
+              Press Tab
             </div>
           )}
           
-          <button 
+          {/* <button 
             type="button" 
             className="p-3 text-gray-400 hover:text-gray-600"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
             </svg>
+          </button> */}
+          <button 
+            type="button" 
+            className="p-3 text-gray-400 hover:text-gray-600"
+            onClick={() => setShowEmojiPicker(!showEmojiPicker)}
+          >
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
           </button>
-          
+
+          {/* Simple Emoji Picker */}
+          {showEmojiPicker && (
+            <div className="absolute bottom-full right-0 bg-white rounded-lg shadow-lg border border-gray-200 p-2 mb-1 z-10">
+              <div className="grid grid-cols-8 gap-2">
+                {["😀", "😂", "🙂", "😊", "😍", "😎", "🤔", "😐",
+                  "😢", "😭", "😡", "🤯", "😴", "🤒", "👍", "👎",
+                  "👋", "✌️", "👏", "🙏", "💪", "🧠", "💯", "❤️"].map(emoji => (
+                  <button 
+                    key={emoji} 
+                    className="text-2xl p-1 hover:bg-gray-100 rounded"
+                    onClick={() => insertEmoji(emoji)}
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+                              
           {/* Command suggestions dropdown */}
           {showSuggestions && commandType && (
             <div 
@@ -660,7 +791,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
                   Available {commandType.charAt(0).toUpperCase() + commandType.slice(1)} Commands
                 </div>
                 <ul>
-                  {getSuggestionsToShow().map((suggestion, index) => (
+                {getSuggestionsToShow().map((suggestion, index) => (
                     <li 
                       key={index}
                       className="px-2 py-1.5 hover:bg-blue-50 cursor-pointer rounded"

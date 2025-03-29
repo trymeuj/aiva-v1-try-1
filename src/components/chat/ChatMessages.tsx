@@ -1,8 +1,10 @@
+// src/components/chat/ChatMessages.tsx - Updated
 'use client'
 
 import { useRef, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Message } from './types'
+import TypingIndicator from './TypingIndicator'
 
 // Time Display Component
 function TimeDisplay({ date }: { date: Date }) {
@@ -58,7 +60,26 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
   const renderMessage = (message: Message) => {
     const isUser = message.type === 'user'
     const isAI = message.type === 'ai'
+    const isTyping = message.type === 'typing'
     const contentType = isAI ? isSpecialContent(message.text) : null;
+
+    // Special case for typing indicator
+    if (isTyping) {
+      return (
+        <div key={message.id} className="flex items-start">
+          <div className="flex-shrink-0 mr-4">
+            <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center">
+              <svg className="h-6 w-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+              </svg>
+            </div>
+          </div>
+          <div className="p-4 shadow-sm rounded-2xl bg-white text-gray-800 rounded-tl-none">
+            <TypingIndicator />
+          </div>
+        </div>
+      )
+    }
 
     return (
       <div key={message.id} className={`flex items-start ${isUser ? 'justify-end' : ''}`}>
