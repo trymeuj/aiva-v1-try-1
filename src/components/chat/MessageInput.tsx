@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, FormEvent, KeyboardEvent } from 'react'
 interface MessageInputProps {
   onSendMessage: (message: string) => void
   onSearch: (query: string) => void
+  onResearch?: (query: string) => void; // Add this
 }
 
 interface CommandSuggestion {

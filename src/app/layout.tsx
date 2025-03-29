@@ -1,6 +1,7 @@
 import './globals.css'
 import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
+import AppWithSideDisplay from '@/components/SideDisplay/AppWithSideDisplay'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -24,7 +25,9 @@ export default function RootLayout({
         
         {/* Main content area */}
         <main id="main-content" className="flex-1 relative h-full">
-          {children}
+          <AppWithSideDisplay>
+            {children}
+          </AppWithSideDisplay>
         </main>
       </body>
     </html>
