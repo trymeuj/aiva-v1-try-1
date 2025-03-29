@@ -45,9 +45,20 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
     setTimeout(() => setCopiedMessageId(null), 1000)
   }
 
+  // Determine if message contains Gmail or Calendar content
+  const isSpecialContent = (text: string): 'gmail' | 'calendar' | null => {
+    if (text.includes('📨 Found') || text.includes('Email Details')) {
+      return 'gmail';
+    } else if (text.includes('📅 Found') || text.includes('Event created successfully')) {
+      return 'calendar';
+    }
+    return null;
+  }
+
   const renderMessage = (message: Message) => {
     const isUser = message.type === 'user'
     const isAI = message.type === 'ai'
+    const contentType = isAI ? isSpecialContent(message.text) : null;
 
     return (
       <div key={message.id} className={`flex items-start ${isUser ? 'justify-end' : ''}`}>
@@ -62,16 +73,39 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
         )}
 
         <div className="relative group max-w-md">
-          <div className={`p-4 shadow-sm rounded-2xl ${isUser ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white text-gray-800 rounded-tl-none'}`}>
+          <div className={`p-4 shadow-sm rounded-2xl ${
+            isUser 
+              ? 'bg-blue-600 text-white rounded-tr-none' 
+              : contentType === 'gmail'
+                ? 'bg-purple-50 text-gray-800 rounded-tl-none border border-purple-200'
+                : contentType === 'calendar'
+                  ? 'bg-yellow-50 text-gray-800 rounded-tl-none border border-yellow-200'
+                  : 'bg-white text-gray-800 rounded-tl-none'
+          }`}>
             {isAI ? (
               <ReactMarkdown
               components={{
-                p: ({ node, ...props }) => <p {...props} className="prose prose-sm" />
+                // Enhanced rendering for headings, lists, etc.
+                h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2" />,
+                li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-gray-300 pl-3 py-1 my-2 italic text-gray-600" />,
+                code: ({ className, children, ...props }) => {
+                  // Check if it's an inline code block based on the context
+                  const isInline = !className || !className.includes('language-');
+                  return isInline 
+                    ? <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+                    : <pre className="bg-gray-100 p-3 rounded my-2 overflow-x-auto"><code className="text-sm font-mono" {...props}>{children}</code></pre>;
+                },
+                strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
+                em: ({ node, ...props }) => <em {...props} className="italic" />,
               }}
-            >
-              {message.text}
-            </ReactMarkdown>
-            
+              >
+                {message.text}
+              </ReactMarkdown>
             ) : (
               <p>{message.text}</p>
             )}

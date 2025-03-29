@@ -5,13 +5,7 @@ import { useState, useRef, useEffect, FormEvent, KeyboardEvent } from 'react'
 interface MessageInputProps {
   onSendMessage: (message: string) => void
   onSearch: (query: string) => void
-  onResearch?: (query: string) => void; // Add this
-}
-
-interface CommandSuggestion {
-  command: string;
-  description: string;
-  parameters: CommandParameter[];
+  onResearch?: (query: string) => void
 }
 
 interface CommandParameter {
@@ -20,18 +14,25 @@ interface CommandParameter {
   required: boolean;
 }
 
-export default function MessageInput({ onSendMessage, onSearch }: MessageInputProps): React.ReactElement {
+interface CommandSuggestion {
+  command: string;
+  description: string;
+  parameters: CommandParameter[];
+}
+
+export default function MessageInput({ onSendMessage, onSearch, onResearch }: MessageInputProps): React.ReactElement {
   const [message, setMessage] = useState<string>('')
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
   const [isSearchMode, setIsSearchMode] = useState<boolean>(false)
   const [ghostText, setGhostText] = useState<string>('')
   const [selectedCommand, setSelectedCommand] = useState<string | null>(null)
+  const [commandType, setCommandType] = useState<'docs' | 'gmail' | 'calendar' | null>(null)
   const [currentParameterIndex, setCurrentParameterIndex] = useState<number>(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const ghostRef = useRef<HTMLSpanElement>(null)
 
-  // Enhanced commands with parameter information
-  const suggestions: CommandSuggestion[] = [
+  // Enhanced commands with parameter information for docs
+  const docsSuggestions: CommandSuggestion[] = [
     { 
       command: 'create-doc', 
       description: 'Create a new Google Doc', 
@@ -89,14 +90,101 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
         { name: 'reply_id', description: 'ID of the reply to delete', required: true }
       ]
     }
-  ]
+  ];
 
-  // Get parameters for the currently selected command
-  const getCommandParameters = (): CommandParameter[] => {
-    if (!selectedCommand) return [];
-    const command = suggestions.find(s => s.command === selectedCommand);
-    return command ? command.parameters : [];
-  }
+  // Gmail suggestions
+  const gmailSuggestions: CommandSuggestion[] = [
+    { 
+      command: 'list', 
+      description: 'List emails from your inbox', 
+      parameters: [
+        { name: 'maxResults', description: 'Number of emails to return', required: false },
+        { name: 'query', description: 'Gmail search query', required: false },
+        { name: 'includeBody', description: 'Include email body in results', required: false }
+      ] 
+    },
+    { 
+      command: 'search', 
+      description: 'Search for specific emails', 
+      parameters: [
+        { name: 'query', description: 'Gmail search query', required: true },
+        { name: 'maxResults', description: 'Number of emails to return', required: false },
+        { name: 'includeBody', description: 'Include email body in results', required: false }
+      ] 
+    },
+    { 
+      command: 'get', 
+      description: 'Get a single email by ID', 
+      parameters: [
+        { name: 'id', description: 'Email ID to retrieve', required: true }
+      ] 
+    },
+    { 
+      command: 'send', 
+      description: 'Send a new email', 
+      parameters: [
+        { name: 'to', description: 'Recipient email address', required: true },
+        { name: 'subject', description: 'Email subject', required: true },
+        { name: 'body', description: 'Email body content', required: true },
+        { name: 'cc', description: 'CC recipients', required: false },
+        { name: 'bcc', description: 'BCC recipients', required: false }
+      ] 
+    },
+    { 
+      command: 'modify', 
+      description: 'Modify email labels', 
+      parameters: [
+        { name: 'id', description: 'Email ID to modify', required: true },
+        { name: 'addLabels', description: 'Labels to add (comma separated)', required: false },
+        { name: 'removeLabels', description: 'Labels to remove (comma separated)', required: false }
+      ] 
+    }
+  ];
+
+  // Calendar suggestions
+  const calendarSuggestions: CommandSuggestion[] = [
+    { 
+      command: 'list', 
+      description: 'List upcoming calendar events', 
+      parameters: [
+        { name: 'maxResults', description: 'Number of events to return', required: false },
+        { name: 'timeMin', description: 'Start time (ISO format)', required: false },
+        { name: 'timeMax', description: 'End time (ISO format)', required: false }
+      ] 
+    },
+    { 
+      command: 'create', 
+      description: 'Create a new calendar event', 
+      parameters: [
+        { name: 'summary', description: 'Event title', required: true },
+        { name: 'location', description: 'Event location', required: false },
+        { name: 'description', description: 'Event description', required: false },
+        { name: 'start', description: 'Start time (ISO format)', required: true },
+        { name: 'end', description: 'End time (ISO format)', required: true },
+        { name: 'attendees', description: 'Comma-separated list of attendee emails', required: false }
+      ] 
+    },
+    { 
+      command: 'update', 
+      description: 'Update an existing calendar event', 
+      parameters: [
+        { name: 'eventId', description: 'ID of the event to update', required: true },
+        { name: 'summary', description: 'New event title', required: false },
+        { name: 'location', description: 'New event location', required: false },
+        { name: 'description', description: 'New event description', required: false },
+        { name: 'start', description: 'New start time (ISO format)', required: false },
+        { name: 'end', description: 'New end time (ISO format)', required: false },
+        { name: 'attendees', description: 'New comma-separated list of attendee emails', required: false }
+      ] 
+    },
+    { 
+      command: 'delete', 
+      description: 'Delete a calendar event', 
+      parameters: [
+        { name: 'eventId', description: 'ID of the event to delete', required: true }
+      ] 
+    }
+  ];
 
   const handleSubmit = (e: FormEvent): void => {
     e.preventDefault()
@@ -110,20 +198,47 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
       setGhostText('')
       setShowSuggestions(false)
       setSelectedCommand(null)
+      setCommandType(null)
       setCurrentParameterIndex(0)
     }
   }
 
+  // Get parameters for the currently selected command
+  const getCommandParameters = (): CommandParameter[] => {
+    if (!selectedCommand || !commandType) return [];
+    
+    // Determine which command set to use based on the command type
+    let matchedCommand: CommandSuggestion | undefined;
+    
+    switch (commandType) {
+      case 'docs':
+        matchedCommand = docsSuggestions.find(s => s.command === selectedCommand);
+        break;
+      case 'gmail':
+        matchedCommand = gmailSuggestions.find(s => s.command === selectedCommand);
+        break;
+      case 'calendar':
+        matchedCommand = calendarSuggestions.find(s => s.command === selectedCommand);
+        break;
+    }
+    
+    return matchedCommand ? matchedCommand.parameters : [];
+  }
+
   // Update ghost text suggestions based on current input
   const updateGhostText = () => {
-    if (!selectedCommand) {
+    if (!selectedCommand || !commandType) {
       setGhostText('');
       return;
     }
 
+    // Get the command prefix based on type
+    const commandPrefix = `@${commandType}`;
+
     // Check if we still have the command in the message
-    if (!message.includes(`@docs ${selectedCommand}`)) {
+    if (!message.includes(`${commandPrefix} ${selectedCommand}`)) {
       setSelectedCommand(null);
+      setCommandType(null);
       setGhostText('');
       return;
     }
@@ -135,7 +250,7 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
     }
 
     // Parse the current message to find the command and already entered parameters
-    const regex = new RegExp(`@docs\\s+${selectedCommand}\\s+(.*?)$`);
+    const regex = new RegExp(`${commandPrefix}\\s+${selectedCommand}\\s+(.*?)$`);
     const match = message.match(regex);
     const paramsText = match ? match[1] : '';
 
@@ -197,56 +312,120 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
     if (!text.trim()) {
       setGhostText('');
       setSelectedCommand(null);
+      setCommandType(null);
       setCurrentParameterIndex(0);
       return;
     }
     
-    // Show command suggestions if the user types @docs
+    // Detect command types and show suggestions
     if (text.includes('@docs ') && !selectedCommand) {
       const commandParts = text.split('@docs ')[1].trim().split(' ');
-      
       if (commandParts.length === 1 && !commandParts[0].includes(':')) {
         setShowSuggestions(true);
+        setCommandType('docs');
       } else {
         setShowSuggestions(false);
       }
-    } else if (text.endsWith('@docs')) {
+    } 
+    else if (text.includes('@gmail ') && !selectedCommand) {
+      const commandParts = text.split('@gmail ')[1].trim().split(' ');
+      if (commandParts.length === 1 && !commandParts[0].includes(':')) {
+        setShowSuggestions(true);
+        setCommandType('gmail');
+      } else {
+        setShowSuggestions(false);
+      }
+    }
+    else if (text.includes('@calendar ') && !selectedCommand) {
+      const commandParts = text.split('@calendar ')[1].trim().split(' ');
+      if (commandParts.length === 1 && !commandParts[0].includes(':')) {
+        setShowSuggestions(true);
+        setCommandType('calendar');
+      } else {
+        setShowSuggestions(false);
+      }
+    }
+    else if (text.endsWith('@docs')) {
       setShowSuggestions(true);
-    } else {
+      setCommandType('docs');
+    }
+    else if (text.endsWith('@gmail')) {
+      setShowSuggestions(true);
+      setCommandType('gmail');
+    }
+    else if (text.endsWith('@calendar')) {
+      setShowSuggestions(true);
+      setCommandType('calendar');
+    } 
+    else {
       setShowSuggestions(false);
     }
     
     // Check if a command is selected or being typed
-    if (selectedCommand) {
+    if (selectedCommand && commandType) {
       // If we deleted the command, clear everything
-      if (!text.includes(`@docs ${selectedCommand}`)) {
+      const commandPrefix = `@${commandType}`;
+      if (!text.includes(`${commandPrefix} ${selectedCommand}`)) {
         setSelectedCommand(null);
+        setCommandType(null);
         setGhostText('');
         setCurrentParameterIndex(0);
       } else {
         updateGhostText();
       }
-    } else if (text.includes('@docs ')) {
-      // Check if user has typed a full command
-      const commandPart = text.split('@docs ')[1].trim().split(' ')[0];
-      const matchedCommand = suggestions.find(s => s.command === commandPart);
-      
-      if (matchedCommand) {
-        setSelectedCommand(matchedCommand.command);
-        setCurrentParameterIndex(0);
-        updateGhostText();
+    } else {
+      // Check for docs command
+      if (text.includes('@docs ')) {
+        const commandPart = text.split('@docs ')[1].trim().split(' ')[0];
+        const matchedCommand = docsSuggestions.find(s => s.command === commandPart);
+        
+        if (matchedCommand) {
+          setSelectedCommand(matchedCommand.command);
+          setCommandType('docs');
+          setCurrentParameterIndex(0);
+          updateGhostText();
+        }
+      }
+      // Check for gmail command
+      else if (text.includes('@gmail ')) {
+        const commandPart = text.split('@gmail ')[1].trim().split(' ')[0];
+        const matchedCommand = gmailSuggestions.find(s => s.command === commandPart);
+        
+        if (matchedCommand) {
+          setSelectedCommand(matchedCommand.command);
+          setCommandType('gmail');
+          setCurrentParameterIndex(0);
+          updateGhostText();
+        }
+      }
+      // Check for calendar command
+      else if (text.includes('@calendar ')) {
+        const commandPart = text.split('@calendar ')[1].trim().split(' ')[0];
+        const matchedCommand = calendarSuggestions.find(s => s.command === commandPart);
+        
+        if (matchedCommand) {
+          setSelectedCommand(matchedCommand.command);
+          setCommandType('calendar');
+          setCurrentParameterIndex(0);
+          updateGhostText();
+        }
       }
     }
   }
 
   const insertSuggestion = (command: string): void => {
-    // If @docs is already in the message
-    if (message.includes('@docs')) {
-      // Replace @docs with @docs command
-      setMessage(message.replace('@docs', `@docs ${command} `));
+    if (!commandType) return;
+    
+    // Get the command prefix based on type
+    const prefix = `@${commandType}`;
+    
+    // If the command prefix is already in the message
+    if (message.includes(prefix)) {
+      // Replace the prefix with prefix + command
+      setMessage(message.replace(prefix, `${prefix} ${command} `));
     } else {
-      // Otherwise append the command
-      setMessage(`${message}@docs ${command} `);
+      // Otherwise append the command with proper prefix
+      setMessage(`${message}${prefix} ${command} `);
     }
     
     // Set the selected command
@@ -335,6 +514,20 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
     }
   }, [message, selectedCommand, ghostText]);
 
+  // Helper function to determine which suggestions to show based on the command type
+  const getSuggestionsToShow = () => {
+    switch (commandType) {
+      case 'docs':
+        return docsSuggestions;
+      case 'gmail':
+        return gmailSuggestions;
+      case 'calendar':
+        return calendarSuggestions;
+      default:
+        return [];
+    }
+  };
+
   return (
     <div className="bg-white border-t border-gray-200 p-4 relative">
       {isSearchMode && (
@@ -346,18 +539,57 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
         {/* Docs button */}
         <button 
           type="button"
-          className="p-2 mr-1 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          className="p-2 mr-1 rounded-full text-blue-600 hover:text-blue-800 hover:bg-blue-100"
           title="Insert @docs command"
           onClick={(e) => {
             e.stopPropagation()
             setMessage(message + '@docs ')
             setShowSuggestions(true)
+            setCommandType('docs')
             setIsSearchMode(false)
             inputRef.current?.focus()
           }}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+          </svg>
+        </button>
+
+        {/* Gmail button */}
+        <button 
+          type="button"
+          className="p-2 mr-1 rounded-full text-purple-600 hover:text-purple-800 hover:bg-purple-100"
+          title="Insert @gmail command"
+          onClick={(e) => {
+            e.stopPropagation()
+            setMessage(message + '@gmail ')
+            setShowSuggestions(true)
+            setCommandType('gmail')
+            setIsSearchMode(false)
+            inputRef.current?.focus()
+          }}
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"></path>
+          </svg>
+        </button>
+
+        {/* Calendar button */}
+        <button 
+          type="button"
+          className="p-2 mr-1 rounded-full text-yellow-600 hover:text-yellow-800 hover:bg-yellow-100"
+          title="Insert @calendar command"
+          onClick={(e) => {
+            e.stopPropagation()
+            setMessage(message + '@calendar ')
+            setShowSuggestions(true)
+            setCommandType('calendar')
+            setIsSearchMode(false)
+            inputRef.current?.focus()
+          }}
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
           </svg>
         </button>
 
@@ -382,7 +614,7 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
             <input 
               ref={inputRef}
               type="text" 
-              placeholder={isSearchMode ? "Search the web..." : "Type your message... (Use @docs for document commands)"}
+              placeholder={isSearchMode ? "Search the web..." : "Type your message... (Use @docs, @gmail, or @calendar for commands)"}
               className="w-full p-3 bg-transparent outline-none rounded-lg"
               value={message}
               onChange={(e) => handleInputChange(e.target.value)}
@@ -418,21 +650,29 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
           </button>
           
           {/* Command suggestions dropdown */}
-          {showSuggestions && (
+          {showSuggestions && commandType && (
             <div 
               className="absolute bottom-full left-0 w-full bg-white rounded-lg shadow-lg border border-gray-200 mb-1 z-10"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-2">
-                <div className="text-xs font-medium text-gray-500 mb-2 px-2">Available Commands</div>
+                <div className="text-xs font-medium text-gray-500 mb-2 px-2">
+                  Available {commandType.charAt(0).toUpperCase() + commandType.slice(1)} Commands
+                </div>
                 <ul>
-                  {suggestions.map((suggestion, index) => (
+                  {getSuggestionsToShow().map((suggestion, index) => (
                     <li 
                       key={index}
                       className="px-2 py-1.5 hover:bg-blue-50 cursor-pointer rounded"
                       onClick={() => insertSuggestion(suggestion.command)}
                     >
-                      <div className="font-medium text-blue-600">{suggestion.command}</div>
+                      <div className={`font-medium ${
+                        commandType === 'docs' ? 'text-blue-600' :
+                        commandType === 'gmail' ? 'text-purple-600' : 
+                        'text-yellow-600'
+                      }`}>
+                        {suggestion.command}
+                      </div>
                       <div className="text-xs text-gray-500">{suggestion.description}</div>
                       <div className="text-xs text-gray-400 mt-1">
                         Parameters: {suggestion.parameters.map(p => p.name).join(', ')}
