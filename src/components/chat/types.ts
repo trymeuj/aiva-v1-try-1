@@ -1,7 +1,6 @@
 export type MessageType = 'user' | 'ai' | 'typing';
 
-// Source of the message - to track where messages come from
-export type MessageSource = 'llm' | 'websearch' | 'mcp' | 'user';
+export type MessageSource = 'user' | 'llm' | 'mcp' | 'websearch' | 'research';
 
 export interface Message {
   id: string;
@@ -11,19 +10,10 @@ export interface Message {
   components?: MessageComponent[];
 }
 
-// Extended Message with source information for memory storage
+// Enhanced Message type for storage in memory system
 export interface MemoryMessage extends Message {
   source: MessageSource;
-  storedAt: string; // ISO timestamp when stored
-  metadata?: Record<string, any>; // Optional metadata (like document IDs, search queries, etc.)
-}
-
-// Session structure to group messages
-export interface ConversationSession {
-  id: string;
-  createdAt: string; // ISO timestamp
-  title?: string;
-  messages: MemoryMessage[];
+  storedAt: string; // ISO string of storage timestamp
 }
 
 export interface MessageComponent {

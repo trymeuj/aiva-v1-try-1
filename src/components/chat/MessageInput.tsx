@@ -5,6 +5,7 @@ import { useState, useRef, useEffect, FormEvent } from 'react'
 interface MessageInputProps {
   onSendMessage: (message: string) => void
   onSearch: (query: string) => void
+  onResearch: (query: string) => void
 }
 
 interface CommandSuggestion {
@@ -12,11 +13,17 @@ interface CommandSuggestion {
   description: string;
 }
 
-export default function MessageInput({ onSendMessage, onSearch }: MessageInputProps): React.ReactElement {
+export default function MessageInput({ onSendMessage, onSearch, onResearch }: MessageInputProps): React.ReactElement {
   const [message, setMessage] = useState<string>('')
   const [showSuggestions, setShowSuggestions] = useState<boolean>(false)
-  const [isSearchMode, setIsSearchMode] = useState<boolean>(false)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const [searchMode, setSearchMode] = useState<'none' | 'search' | 'research'>('none')
+  const [isExpanded, setIsExpanded] = useState<boolean>(false)
+  const [showExpandButton, setShowExpandButton] = useState<boolean>(false)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
+  
+  // Constants for expansion
+  const LONG_TEXT_THRESHOLD = 100; // Characters before showing expand button
 
   const suggestions: CommandSuggestion[] = [
     { command: 'create-doc', description: 'Create a new Google Doc' },
@@ -29,15 +36,30 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
   const handleSubmit = (e: FormEvent): void => {
     e.preventDefault()
     if (message.trim()) {
-      if (isSearchMode) {
+      if (searchMode === 'search') {
         onSearch(message)
+      } else if (searchMode === 'research') {
+        onResearch(message)
       } else {
         onSendMessage(message)
       }
       setMessage('')
       setShowSuggestions(false)
+      setIsExpanded(false)
+      setShowExpandButton(false)
     }
   }
+
+  // Check if we need to show the expand button based on text length
+  useEffect(() => {
+    const needsExpand = message.length > LONG_TEXT_THRESHOLD;
+    setShowExpandButton(needsExpand);
+    
+    // If text becomes short again while expanded, collapse
+    if (!needsExpand && isExpanded) {
+      setIsExpanded(false);
+    }
+  }, [message, isExpanded]);
 
   const handleInputChange = (text: string): void => {
     setMessage(text)
@@ -62,34 +84,86 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
     
     // Hide suggestions and focus on the input
     setShowSuggestions(false)
-    inputRef.current?.focus()
+    textareaRef.current?.focus()
   }
 
-  // Toggle search mode
-  const toggleSearchMode = (): void => {
-    setIsSearchMode(!isSearchMode)
-    inputRef.current?.focus()
+  // Toggle search modes
+  const toggleSearchMode = (mode: 'search' | 'research'): void => {
+    setSearchMode(searchMode === mode ? 'none' : mode);
+    textareaRef.current?.focus()
+  }
+
+  // Toggle expanded view
+  const toggleExpand = (): void => {
+    setIsExpanded(!isExpanded);
+    // Focus the textarea and place cursor at the end
+    if (!isExpanded) {
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.focus();
+          const length = textareaRef.current.value.length;
+          textareaRef.current.setSelectionRange(length, length);
+        }
+      }, 0);
+    }
   }
 
   // Close suggestions when clicking outside
   useEffect(() => {
-    const handleClickOutside = () => {
-      setShowSuggestions(false)
+    const handleClickOutside = (e: MouseEvent) => {
+      // Don't close if clicking on the container or its children
+      if (containerRef.current && containerRef.current.contains(e.target as Node)) {
+        return;
+      }
+      setShowSuggestions(false);
+      // Don't automatically collapse the expanded view on outside click
     }
     
     document.addEventListener('click', handleClickOutside)
     return () => {
       document.removeEventListener('click', handleClickOutside)
     }
-  }, [])
+  }, []);
 
   return (
-    <div className="bg-white border-t border-gray-200 p-4 relative">
-      {isSearchMode && (
+    <div ref={containerRef} className="bg-white border-t border-gray-200 p-4 relative">
+      {searchMode !== 'none' && (
         <div className="absolute top-0 left-1/2 transform -translate-x-1/2 -translate-y-3/4 bg-blue-100 text-blue-700 text-xs font-medium px-3 py-0.5 rounded-full shadow-sm">
-          Web Search Mode
+          {searchMode === 'search' ? 'Web Search Mode' : 'Deep Research Mode'}
         </div>
       )}
+      
+      {/* Expanded floating textarea */}
+      {isExpanded && (
+        <div className="absolute bottom-full left-0 right-0 bg-white border border-gray-300 rounded-t-lg shadow-lg z-10">
+          <div className="flex justify-between items-center p-2 border-b border-gray-200">
+            <span className="text-sm font-medium text-gray-700">Edit Message</span>
+            <button 
+              type="button" 
+              className="text-gray-500 hover:text-gray-700"
+              onClick={toggleExpand}
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <textarea
+            ref={textareaRef}
+            value={message}
+            onChange={(e) => handleInputChange(e.target.value)}
+            className="w-full p-4 min-h-[200px] focus:outline-none resize-none"
+            placeholder={
+              searchMode === 'search' 
+                ? "Search the web..." 
+                : searchMode === 'research'
+                  ? "Research a topic in depth..."
+                  : "Type your message... (Use @docs for document commands)"
+            }
+          />
+        </div>
+      )}
+      
       <form onSubmit={handleSubmit} className="max-w-4xl mx-auto flex items-center">
         {/* Docs button */}
         <button 
@@ -100,8 +174,8 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
             e.stopPropagation()
             setMessage(message + '@docs ')
             setShowSuggestions(true)
-            setIsSearchMode(false)
-            inputRef.current?.focus()
+            setSearchMode('none')
+            textareaRef.current?.focus()
           }}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
@@ -112,29 +186,72 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
         {/* Search button */}
         <button 
           type="button"
-          className={`p-2 mr-3 rounded-full ${
-            isSearchMode 
+          className={`p-2 mr-1 rounded-full ${
+            searchMode === 'search' 
               ? 'text-blue-600 bg-blue-100 ring-2 ring-blue-300' 
               : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
           }`}
-          title={isSearchMode ? "Exit search mode" : "Enable web search"}
-          onClick={toggleSearchMode}
+          title={searchMode === 'search' ? "Exit search mode" : "Enable web search"}
+          onClick={() => toggleSearchMode('search')}
         >
           <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
           </svg>
         </button>
 
-        <div className="flex-1 border border-gray-300 rounded-lg flex items-center">
+        {/* Research button */}
+        <button 
+          type="button"
+          className={`p-2 mr-3 rounded-full ${
+            searchMode === 'research' 
+              ? 'text-green-600 bg-green-100 ring-2 ring-green-300' 
+              : 'text-gray-400 hover:text-gray-600 hover:bg-gray-100'
+          }`}
+          title={searchMode === 'research' ? "Exit research mode" : "Enable deep research"}
+          onClick={() => toggleSearchMode('research')}
+        >
+          <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"></path>
+          </svg>
+        </button>
+
+        <div className="flex-1 border border-gray-300 rounded-lg flex items-center relative">
+          {/* Normal single-line input (always visible) */}
           <input 
-            ref={inputRef}
             type="text" 
-            placeholder={isSearchMode ? "Search the web..." : "Type your message... (Use @docs for document commands)"}
-            className="flex-1 p-3 bg-transparent outline-none rounded-lg"
+            className="flex-1 p-3 bg-transparent outline-none rounded-lg overflow-hidden text-ellipsis"
             value={message}
             onChange={(e) => handleInputChange(e.target.value)}
-            onClick={(e) => e.stopPropagation()}
+            placeholder={
+              searchMode === 'search' 
+                ? "Search the web..." 
+                : searchMode === 'research'
+                  ? "Research a topic in depth..."
+                  : "Type your message... (Use @docs for document commands)"
+            }
+            readOnly={isExpanded}
+            onClick={() => {
+              if (showExpandButton && !isExpanded) {
+                toggleExpand();
+              }
+            }}
           />
+          
+          {/* Expand button */}
+          {showExpandButton && !isExpanded && (
+            <button 
+              type="button"
+              className="p-2 mx-1 text-gray-400 hover:text-gray-600 rounded-full hover:bg-gray-100"
+              onClick={toggleExpand}
+              title="Expand editor"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5v-4m0 4h-4m4 0l-5-5" />
+              </svg>
+            </button>
+          )}
+          
+          {/* Emoji button */}
           <button 
             type="button" 
             className="p-3 text-gray-400 hover:text-gray-600"
@@ -147,7 +264,7 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
           {/* Suggestions dropdown */}
           {showSuggestions && (
             <div 
-              className="absolute bottom-full left-0 w-full bg-white rounded-lg shadow-lg border border-gray-200 mb-1 z-10"
+              className="absolute bottom-full left-0 w-full bg-white rounded-lg shadow-lg border border-gray-200 mb-1 z-20"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="p-2">
@@ -171,14 +288,28 @@ export default function MessageInput({ onSendMessage, onSearch }: MessageInputPr
         <button 
           type="submit"
           className={`ml-2 p-3 text-white rounded-lg ${
-            isSearchMode ? 'bg-blue-600 hover:bg-blue-700' : 'bg-blue-600 hover:bg-blue-700'
+            searchMode === 'search' 
+              ? 'bg-blue-600 hover:bg-blue-700' 
+              : searchMode === 'research'
+                ? 'bg-green-600 hover:bg-green-700'
+                : 'bg-blue-600 hover:bg-blue-700'
           }`}
           disabled={!message.trim()}
-          title={isSearchMode ? "Search the web" : "Send message"}
+          title={
+            searchMode === 'search' 
+              ? "Search the web" 
+              : searchMode === 'research'
+                ? "Research in depth"
+                : "Send message"
+          }
         >
-          {isSearchMode ? (
+          {searchMode === 'search' ? (
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+            </svg>
+          ) : searchMode === 'research' ? (
+            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path>
             </svg>
           ) : (
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">

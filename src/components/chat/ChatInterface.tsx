@@ -12,9 +12,10 @@ import MCPToolsHelp from './MCPToolsHelp'
 import { Message, MessageType, ApiMessage, ChatResponse } from './types'
 import { isMCPCommand, parseCommand, callMCPServer } from '@/lib/mcpService'
 import { searchWeb } from '@/lib/searchService'
+import { youSmartSearch, youResearch } from '@/lib/youcomService'
 
 export default function ChatInterface(): React.ReactElement {
-  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon in the message input or type @docs to see available commands. Click the search icon to search the web.";
+  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon or type @docs to see available commands. Click the search icon for web search. Click the research icon for in-depth research."
   
   // Initialize memory hook
   const { isReady, getMessages, saveMessage } = useMemory()
@@ -185,7 +186,7 @@ export default function ChatInterface(): React.ReactElement {
     }
   }
 
-  // Function to handle web search
+  // Function to handle web search using You.com Smart Search
   const handleSearch = async (query: string): Promise<void> => {
     // Add user message to UI with search indicator
     const userMessage: Message = {
@@ -204,8 +205,8 @@ export default function ChatInterface(): React.ReactElement {
     setIsTyping(true)
     
     try {
-      // Call the search API
-      const response = await searchWeb(query);
+      // Call the You.com Smart Search API
+      const response = await youSmartSearch(query);
       
       // Handle error
       if (!response.success || !response.reply) {
@@ -262,6 +263,83 @@ export default function ChatInterface(): React.ReactElement {
     }
   }
 
+  // Function to handle You.com deep research
+  const handleResearch = async (query: string): Promise<void> => {
+    // Add user message to UI with research indicator
+    const userMessage: Message = {
+      id: uuidv4(),
+      type: 'user',
+      text: `🔬 Researching: "${query}"`,
+      timestamp: new Date(),
+    }
+    
+    setMessages(prev => [...prev, userMessage])
+    
+    // Store research query in memory
+    saveMessage(userMessage, 'user');
+    
+    // Show typing indicator
+    setIsTyping(true)
+    
+    try {
+      // Call the You.com Research API
+      const response = await youResearch(query, 'comprehensive');
+      
+      // Handle error
+      if (!response.success || !response.reply) {
+        throw new Error(response.error || 'Failed to get research results');
+      }
+      
+      // Add research results to UI
+      const researchResponse: Message = {
+        id: uuidv4(),
+        type: 'ai',
+        text: response.reply,
+        timestamp: new Date(),
+      }
+      
+      setIsTyping(false);
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), researchResponse]);
+      
+      // Store research results in memory with a new source type for research
+      saveMessage(researchResponse, 'research');
+      
+      // Add research result to conversation history
+      // This makes the research results available for LLM context
+      const researchQueryMessage: ApiMessage = { 
+        role: 'user', 
+        content: `Research query: ${query}` 
+      };
+      const researchResultMessage: ApiMessage = { 
+        role: 'assistant', 
+        content: response.reply 
+      };
+      
+      setConversationHistory(prevHistory => [
+        ...prevHistory,
+        researchQueryMessage,
+        researchResultMessage
+      ]);
+      
+    } catch (error) {
+      console.error('Error getting research results:', error);
+      
+      // Show error message
+      const errorMessage: Message = {
+        id: uuidv4(),
+        type: 'ai',
+        text: error instanceof Error ? error.message : 'Sorry, I encountered an error during research. Please try again later.',
+        timestamp: new Date(),
+      }
+      
+      setIsTyping(false);
+      setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), errorMessage]);
+      
+      // Store error message in memory
+      saveMessage(errorMessage, 'research');
+    }
+  }
+
   // Add typing indicator when AI is typing
   useEffect(() => {
     if (isTyping) {
@@ -287,7 +365,11 @@ export default function ChatInterface(): React.ReactElement {
         </div>
         <ChatMessages messages={messages} />
       </div>
-      <MessageInput onSendMessage={handleSendMessage} onSearch={handleSearch} />
+      <MessageInput 
+        onSendMessage={handleSendMessage} 
+        onSearch={handleSearch} 
+        onResearch={handleResearch}
+      />
       <FeaturesBar />
     </div>
   )
