@@ -9,20 +9,26 @@ export default function GmailToolsHelp() {
     {
       name: "list",
       description: "List emails from your inbox",
-      parameters: ["maxResults", "query", "includeBody"],
-      example: "@gmail list maxResults:5 query:\"is:unread\""
+      parameters: ["maxResults", "query", "includeBody", "includeAttachments"],
+      example: "@gmail list maxResults:5 query:\"is:unread\" includeAttachments:true"
     },
     {
       name: "search",
       description: "Search for specific emails",
-      parameters: ["query", "maxResults", "includeBody"],
-      example: "@gmail search query:\"from:example@gmail.com has:attachment\" maxResults:10"
+      parameters: ["query", "maxResults", "includeBody", "includeAttachments"],
+      example: "@gmail search query:\"from:example@gmail.com has:attachment\" maxResults:10 includeAttachments:true"
     },
     {
       name: "get",
       description: "Get a single email by ID",
-      parameters: ["id"],
-      example: "@gmail get id:18e046d9a8b26397"
+      parameters: ["id", "downloadAttachments"],
+      example: "@gmail get id:18e046d9a8b26397 downloadAttachments:false"
+    },
+    {
+      name: "attachment",
+      description: "Get attachment metadata and optionally data",
+      parameters: ["messageId", "attachmentId", "includeData"],
+      example: "@gmail attachment messageId:\"18e046d9a8b26397\" attachmentId:\"ANGjdJ8jcNBDLFkDjnYThjSujs\" includeData:true"
     },
     {
       name: "send",
@@ -104,11 +110,21 @@ export default function GmailToolsHelp() {
           <div className="mt-4">
             <h4 className="text-sm font-medium text-gray-900 mb-2">Example Usage:</h4>
             <div className="bg-gray-50 p-3 rounded-md">
-              <code className="text-sm text-gray-800">@gmail list maxResults:5 query:"is:unread"</code>
+              <code className="text-sm text-gray-800">@gmail list maxResults:5 query:"is:unread" includeAttachments:true</code>
             </div>
           </div>
           
           <div className="mt-4 p-3 bg-blue-50 text-blue-800 rounded-md">
+            <h4 className="text-sm font-medium mb-2">Working with Attachments:</h4>
+            <ul className="text-xs space-y-1">
+              <li><code>includeAttachments:true</code> - Include attachment metadata in list/search results</li>
+              <li><code>downloadAttachments:true</code> - Include actual attachment data when getting email</li>
+              <li><code>@gmail attachment messageId:"ID" attachmentId:"ID"</code> - Get a specific attachment</li>
+              <li>Use download URL: <code>/api/gmail/download/:messageId/:attachmentId/:filename</code></li>
+            </ul>
+          </div>
+          
+          <div className="mt-4 p-3 bg-purple-50 text-purple-800 rounded-md">
             <h4 className="text-sm font-medium mb-2">Common Gmail Search Queries:</h4>
             <ul className="text-xs space-y-1">
               <li><code>is:unread</code> - Unread emails</li>

@@ -5,6 +5,15 @@ import { useRef, useEffect, useState } from 'react'
 import ReactMarkdown from 'react-markdown'
 import { Message } from './types'
 import TypingIndicator from './TypingIndicator'
+import EmailAttachmentHelper from './EmailAttachmentHelper'
+
+// Define Attachment type
+interface Attachment {
+  filename: string;
+  mimeType: string;
+  size: number;
+  attachmentId: string;
+}
 
 // Time Display Component
 function TimeDisplay({ date }: { date: Date }) {
@@ -57,6 +66,133 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
     return null;
   }
 
+  // Function to render email content with attachments
+  const renderEmailContent = (content: string): React.ReactNode => {
+    // Check if the content contains email details
+    if (content.includes('### 📧 **Email Details**')) {
+      try {
+        // Extract email ID and attachments if they exist
+        const emailIdMatch = content.match(/\*\*ID:\*\*\s+`([^`]+)`/);
+        const emailId = emailIdMatch ? emailIdMatch[1] : null;
+        
+        // Look for attachment section
+        const attachmentSectionMatch = content.match(/Attachments:[\s\S]*?(?=Message Content:|$)/);
+
+        if (emailId && attachmentSectionMatch) {
+          const attachmentSection = attachmentSectionMatch[1];
+          
+          // Extract attachment details - modify this regex based on your response format
+          const attachmentRegex = /File \d+: (.+) \((.+)\)[\s\S]*?Type: (.+)[\s\S]*?ID: (.+)[\s\S]*?To download:/g;
+          const attachments: Attachment[] = [];
+          
+          console.log("Attachment section:", attachmentSection);
+          
+          let match;
+          while ((match = attachmentRegex.exec(attachmentSection)) !== null) {
+            attachments.push({
+              filename: match[1],
+              size: parseFileSize(match[2]),
+              mimeType: match[3],
+              attachmentId: match[4].replace(/`/g, '').trim()
+            });
+          }
+          
+          // If we found attachments, replace the attachment section with our component
+          // If we found attachments, replace the attachment section with our component
+          if (attachments.length > 0 && attachmentSectionMatch && attachmentSectionMatch.index !== undefined) {
+            // Split content at the attachment section
+            console.log("Replacing attachment section with component");
+
+            const beforeAttachments = content.substring(0, attachmentSectionMatch.index);
+            const afterAttachments = content.substring(
+              attachmentSectionMatch.index + attachmentSectionMatch[0].length
+            );
+            
+            return (
+              <>
+                <ReactMarkdown
+                  components={{
+                    h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                    h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                    p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                    ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                    li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                  }}
+                >
+                  {beforeAttachments}
+                </ReactMarkdown>
+                <EmailAttachmentHelper 
+                  messageId={emailId} 
+                  attachments={attachments} 
+                />
+                <ReactMarkdown
+                  components={{
+                    h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                    h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                    p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                    ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                    li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                  }}
+                >
+                  {afterAttachments}
+                </ReactMarkdown>
+              </>
+            );
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing email content:', error);
+      }
+    }
+    
+    // Default: just render the content as markdown
+    return (
+      <ReactMarkdown
+        components={{
+          h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+          h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+          p: ({ node, ...props }) => <p {...props} className="my-2" />,
+          ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+          ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2" />,
+          li: ({ node, ...props }) => <li {...props} className="my-1" />,
+          blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-gray-300 pl-3 py-1 my-2 italic text-gray-600" />,
+          code: ({ className, children, ...props }) => {
+            // Check if it's an inline code block based on the context
+            const isInline = !className || !className.includes('language-');
+            return isInline 
+              ? <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+              : <pre className="bg-gray-100 p-3 rounded my-2 overflow-x-auto"><code className="text-sm font-mono" {...props}>{children}</code></pre>;
+          },
+          strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
+          em: ({ node, ...props }) => <em {...props} className="italic" />,
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+    );
+  };
+
+  // Helper function to parse file size
+  const parseFileSize = (sizeStr: string): number => {
+    try {
+      const match = sizeStr.match(/(\d+(\.\d+)?)\s*([KMGT]?B)/i);
+      if (!match) return 0;
+      
+      const size = parseFloat(match[1]);
+      const unit = match[3].toUpperCase();
+      
+      switch (unit) {
+        case 'KB': return size * 1024;
+        case 'MB': return size * 1024 * 1024;
+        case 'GB': return size * 1024 * 1024 * 1024;
+        case 'TB': return size * 1024 * 1024 * 1024 * 1024;
+        default: return size;
+      }
+    } catch (error) {
+      return 0;
+    }
+  };
+
   const renderMessage = (message: Message) => {
     const isUser = message.type === 'user'
     const isAI = message.type === 'ai'
@@ -104,29 +240,29 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
                   : 'bg-white text-gray-800 rounded-tl-none'
           }`}>
             {isAI ? (
-              <ReactMarkdown
-              components={{
-                // Enhanced rendering for headings, lists, etc.
-                h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
-                h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
-                p: ({ node, ...props }) => <p {...props} className="my-2" />,
-                ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
-                ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2" />,
-                li: ({ node, ...props }) => <li {...props} className="my-1" />,
-                blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-gray-300 pl-3 py-1 my-2 italic text-gray-600" />,
-                code: ({ className, children, ...props }) => {
-                  // Check if it's an inline code block based on the context
-                  const isInline = !className || !className.includes('language-');
-                  return isInline 
-                    ? <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
-                    : <pre className="bg-gray-100 p-3 rounded my-2 overflow-x-auto"><code className="text-sm font-mono" {...props}>{children}</code></pre>;
-                },
-                strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
-                em: ({ node, ...props }) => <em {...props} className="italic" />,
-              }}
-              >
-                {message.text}
-              </ReactMarkdown>
+              contentType === 'gmail' ? renderEmailContent(message.text) : (
+                <ReactMarkdown
+                  components={{
+                    h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                    h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                    p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                    ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                    ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2" />,
+                    li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                    blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-gray-300 pl-3 py-1 my-2 italic text-gray-600" />,
+                    code: ({ className, children, ...props }) => {
+                      const isInline = !className || !className.includes('language-');
+                      return isInline 
+                        ? <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+                        : <pre className="bg-gray-100 p-3 rounded my-2 overflow-x-auto"><code className="text-sm font-mono" {...props}>{children}</code></pre>;
+                    },
+                    strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
+                    em: ({ node, ...props }) => <em {...props} className="italic" />,
+                  }}
+                >
+                  {message.text}
+                </ReactMarkdown>
+              )
             ) : (
               <p>{message.text}</p>
             )}

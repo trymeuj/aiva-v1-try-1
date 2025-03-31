@@ -123,7 +123,7 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
     }
   ];
 
-  // Gmail suggestions
+  // Gmail suggestions with attachment support
   const gmailSuggestions: CommandSuggestion[] = [
     { 
       command: 'list', 
@@ -131,7 +131,8 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
       parameters: [
         { name: 'maxResults', description: 'Number of emails to return', required: false },
         { name: 'query', description: 'Gmail search query', required: false },
-        { name: 'includeBody', description: 'Include email body in results', required: false }
+        { name: 'includeBody', description: 'Include email body in results', required: false },
+        { name: 'includeAttachments', description: 'Include attachment metadata in results', required: false }
       ] 
     },
     { 
@@ -140,14 +141,25 @@ export default function MessageInput({ onSendMessage, onSearch, onResearch }: Me
       parameters: [
         { name: 'query', description: 'Gmail search query', required: true },
         { name: 'maxResults', description: 'Number of emails to return', required: false },
-        { name: 'includeBody', description: 'Include email body in results', required: false }
+        { name: 'includeBody', description: 'Include email body in results', required: false },
+        { name: 'includeAttachments', description: 'Include attachment metadata in results', required: false }
       ] 
     },
     { 
       command: 'get', 
       description: 'Get a single email by ID', 
       parameters: [
-        { name: 'id', description: 'Email ID to retrieve', required: true }
+        { name: 'id', description: 'Email ID to retrieve', required: true },
+        { name: 'downloadAttachments', description: 'Include actual attachment data', required: false }
+      ] 
+    },
+    { 
+      command: 'attachment', 
+      description: 'Get attachment data', 
+      parameters: [
+        { name: 'messageId', description: 'Email ID containing the attachment', required: true },
+        { name: 'attachmentId', description: 'ID of the attachment to retrieve', required: true },
+        { name: 'includeData', description: 'Include actual attachment data (base64)', required: false }
       ] 
     },
     { 
