@@ -1,4 +1,4 @@
-'use client'
+// src/components/chat/EmailAttachmentHelper.tsx - Modified to include attachment data
 
 import React from 'react';
 import AttachmentViewer from './AttachmentViewer';
@@ -8,6 +8,7 @@ interface Attachment {
   mimeType: string;
   size: number;
   attachmentId: string;
+  data?: string; // Added data field
 }
 
 interface EmailAttachmentHelperProps {
@@ -21,7 +22,7 @@ export default function EmailAttachmentHelper({ messageId, attachments }: EmailA
   }
 
   return (
-    <div className="mt-4">
+    <div className="mt-4 mb-4">
       <h4 className="text-sm font-medium text-gray-700 mb-2">Attachments ({attachments.length})</h4>
       <div className="space-y-2">
         {attachments.map((attachment, index) => (
@@ -32,6 +33,7 @@ export default function EmailAttachmentHelper({ messageId, attachments }: EmailA
             filename={attachment.filename}
             mimeType={attachment.mimeType}
             size={attachment.size}
+            data={attachment.data} // Pass the data if available
           />
         ))}
       </div>

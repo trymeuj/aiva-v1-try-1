@@ -1,3 +1,5 @@
+// src/components/chat/AttachmentViewer.tsx - Modified to use existing data
+
 'use client'
 
 import React, { useState } from 'react'
@@ -9,6 +11,7 @@ interface AttachmentViewerProps {
   filename: string;
   mimeType: string;
   size: number;
+  data?: string; // Add optional data property for base64 content
 }
 
 export default function AttachmentViewer({ 
@@ -16,12 +19,22 @@ export default function AttachmentViewer({
   attachmentId, 
   filename, 
   mimeType, 
-  size 
+  size,
+  data // Accept data directly if available
 }: AttachmentViewerProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [data, setData] = useState<string | null>(null);
+  const [attachmentData, setAttachmentData] = useState<string | null>(data || null); // Initialize with provided data if available
   const { openSideDisplay } = useSideDisplay();
+  
+  console.log("Rendering AttachmentViewer for:", {
+    messageId, 
+    attachmentId, 
+    filename, 
+    mimeType, 
+    size,
+    dataAvailable: !!data
+  });
   
   // Format file size to be human-readable
   const formatFileSize = (bytes: number): string => {
@@ -36,8 +49,54 @@ export default function AttachmentViewer({
   
   // Handle attachment download
   const handleDownload = async () => {
-    const downloadUrl = `/api/gmail/download/${messageId}/${attachmentId}/${filename}`;
-    window.open(downloadUrl, '_blank');
+    try {
+      console.log("Downloading attachment:", {messageId, attachmentId, filename});
+      
+      // If we already have the data, download directly from it
+      if (attachmentData) {
+        console.log("Using existing data for download");
+        // Create a blob from the base64 data
+        const byteCharacters = atob(attachmentData);
+        const byteArrays = [];
+        
+        for (let offset = 0; offset < byteCharacters.length; offset += 512) {
+          const slice = byteCharacters.slice(offset, offset + 512);
+          
+          const byteNumbers = new Array(slice.length);
+          for (let i = 0; i < slice.length; i++) {
+            byteNumbers[i] = slice.charCodeAt(i);
+          }
+          
+          const byteArray = new Uint8Array(byteNumbers);
+          byteArrays.push(byteArray);
+        }
+        
+        const blob = new Blob(byteArrays, { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        
+        // Create a download link and click it
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        setTimeout(() => {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }, 0);
+        
+        return;
+      }
+      
+      // Fallback to API if no data is available
+      const downloadUrl = `/api/gmail/download/${messageId}/${attachmentId}/${encodeURIComponent(filename)}`;
+      window.open(downloadUrl, '_blank');
+    } catch (err) {
+      console.error("Download error:", err);
+      setError("Failed to download attachment");
+    }
   };
   
   // Handle attachment preview
@@ -46,6 +105,17 @@ export default function AttachmentViewer({
     setError(null);
     
     try {
+      // If we already have the data, use it directly
+      if (attachmentData) {
+        console.log("Using existing attachment data for preview");
+        showPreviewForData(attachmentData);
+        setLoading(false);
+        return;
+      }
+      
+      console.log("Fetching attachment data for preview:", {messageId, attachmentId});
+      
+      // Otherwise, fetch it from API
       const response = await fetch('/api/gmail/attachment', {
         method: 'POST',
         headers: {
@@ -59,100 +129,117 @@ export default function AttachmentViewer({
       });
       
       if (!response.ok) {
-        throw new Error('Failed to retrieve attachment data');
+        // Try to get more detailed error information
+        let errorDetail = '';
+        try {
+          const errorBody = await response.text();
+          errorDetail = `: ${errorBody}`;
+        } catch (e) {
+          // Ignore error parsing error
+        }
+        
+        throw new Error(`Failed to retrieve attachment data: ${response.status} ${response.statusText}${errorDetail}`);
       }
       
       const result = await response.json();
+      console.log("Attachment API response:", result.success ? "Success" : "Failed", result.data ? "Has data" : "No data");
       
       if (!result.success || !result.data) {
         throw new Error('No attachment data received');
       }
       
-      setData(result.data);
+      setAttachmentData(result.data);
+      showPreviewForData(result.data);
       
-      // Display the attachment in the side panel based on file type
-      if (mimeType.startsWith('image/')) {
-        // Image preview
+    } catch (error) {
+      console.error("Preview error:", error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Helper function to display the preview based on the data
+  const showPreviewForData = (base64Data: string) => {
+    // Display the attachment in the side panel based on file type
+    if (mimeType.startsWith('image/')) {
+      // Image preview
+      openSideDisplay({
+        title: `Preview: ${filename}`,
+        content: (
+          <div className="flex flex-col items-center">
+            <img 
+              src={`data:${mimeType};base64,${base64Data}`} 
+              alt={filename}
+              className="max-w-full h-auto"
+            />
+            <button
+              onClick={handleDownload}
+              className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Download
+            </button>
+          </div>
+        ),
+        contentType: 'document',
+        width: 'wide'
+      });
+    } else if (mimeType === 'application/pdf') {
+      // PDF preview
+      openSideDisplay({
+        title: `PDF Preview: ${filename}`,
+        content: (
+          <div className="flex flex-col h-full">
+            <iframe 
+              src={`data:application/pdf;base64,${base64Data}`}
+              className="flex-1 w-full min-h-[70vh] border-0"
+              title={`PDF preview of ${filename}`}
+            />
+            <div className="py-4 flex justify-center">
+              <button
+                onClick={handleDownload}
+                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+              >
+                Download PDF
+              </button>
+            </div>
+          </div>
+        ),
+        contentType: 'document',
+        width: 'wide'
+      });
+    } else if (mimeType.startsWith('text/')) {
+      // Text preview
+      try {
+        const textData = atob(base64Data);
         openSideDisplay({
           title: `Preview: ${filename}`,
           content: (
-            <div className="flex flex-col items-center">
-              <img 
-                src={`data:${mimeType};base64,${result.data}`} 
-                alt={filename}
-                className="max-w-full h-auto"
-              />
-              <button
-                onClick={handleDownload}
-                className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-              >
-                Download
-              </button>
-            </div>
-          ),
-          contentType: 'document',
-          width: 'wide'
-        });
-      } else if (mimeType === 'application/pdf') {
-        // PDF preview
-        openSideDisplay({
-          title: `PDF Preview: ${filename}`,
-          content: (
-            <div className="flex flex-col h-full">
-              <iframe 
-                src={`data:application/pdf;base64,${result.data}`}
-                className="flex-1 w-full min-h-[70vh] border-0"
-                title={`PDF preview of ${filename}`}
-              />
+            <div className="flex flex-col">
+              <pre className="whitespace-pre-wrap break-words p-4 bg-gray-50 rounded border border-gray-200 max-h-[70vh] overflow-auto">
+                {textData}
+              </pre>
               <div className="py-4 flex justify-center">
                 <button
                   onClick={handleDownload}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
                 >
-                  Download PDF
+                  Download
                 </button>
               </div>
             </div>
           ),
-          contentType: 'document',
+          contentType: 'code',
           width: 'wide'
         });
-      } else if (mimeType.startsWith('text/')) {
-        // Text preview
-        try {
-          const textData = atob(result.data);
-          openSideDisplay({
-            title: `Preview: ${filename}`,
-            content: (
-              <div className="flex flex-col">
-                <pre className="whitespace-pre-wrap break-words p-4 bg-gray-50 rounded border border-gray-200 max-h-[70vh] overflow-auto">
-                  {textData}
-                </pre>
-                <div className="py-4 flex justify-center">
-                  <button
-                    onClick={handleDownload}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
-                  >
-                    Download
-                  </button>
-                </div>
-              </div>
-            ),
-            contentType: 'code',
-            width: 'wide'
-          });
-        } catch (e) {
-          // If we can't decode as text, show base64 data
-          showBase64DataView(result.data, filename);
-        }
-      } else {
-        // For other files, show base64 data view with download option
-        showBase64DataView(result.data, filename);
+      } catch (e) {
+        console.error("Error decoding text data:", e);
+        // If we can't decode as text, show base64 data
+        showBase64DataView(base64Data, filename);
       }
-    } catch (error) {
-      setError(error instanceof Error ? error.message : 'An error occurred');
-    } finally {
-      setLoading(false);
+    } else {
+      // For other files, show base64 data view with download option
+      showBase64DataView(base64Data, filename);
     }
   };
   
@@ -190,36 +277,6 @@ export default function AttachmentViewer({
                     </svg>
                     Download File
                   </button>
-                </div>
-              </li>
-              <li className="flex">
-                <span className="flex-shrink-0 font-medium mr-2">2.</span>
-                <div>
-                  <p>Or you can convert the base64 data to a file using:</p>
-                  <div className="mt-2">
-                    <h5 className="font-medium mb-2">Browser:</h5>
-                    <pre className="bg-gray-50 p-3 rounded-md text-sm overflow-x-auto">
-{`const byteCharacters = atob(base64Data);
-const byteArray = new Uint8Array(byteCharacters.length);
-for (let i = 0; i < byteCharacters.length; i++) {
-  byteArray[i] = byteCharacters.charCodeAt(i);
-}
-const blob = new Blob([byteArray], {type: "${mimeType}"});
-const url = URL.createObjectURL(blob);
-const a = document.createElement("a");
-a.href = url;
-a.download = "${filename}";
-a.click();`}
-                    </pre>
-                  </div>
-                  
-                  <div className="mt-4">
-                    <h5 className="font-medium mb-2">Node.js:</h5>
-                    <pre className="bg-gray-50 p-3 rounded-md text-sm overflow-x-auto">
-{`import { writeFileSync } from 'fs';
-writeFileSync('${filename}', Buffer.from(base64Data, 'base64'));`}
-                    </pre>
-                  </div>
                 </div>
               </li>
             </ol>
@@ -306,7 +363,7 @@ writeFileSync('${filename}', Buffer.from(base64Data, 'base64'));`}
       </div>
       
       {error && (
-        <div className="mt-2 text-sm text-red-600">
+        <div className="mt-2 text-sm text-red-600 bg-red-50 p-2 rounded">
           Error: {error}
         </div>
       )}

@@ -232,6 +232,10 @@ function formatEmailsList(emails: any[]): string {
 /**
  * Format email details for display
  */
+// src/lib/gmailService.ts - Update the formatEmailDetails function
+
+// src/lib/gmailService.ts - Update the formatEmailDetails function
+
 function formatEmailDetails(email: any): EmailDetailsResult {
   if (!email) {
     return {
@@ -242,32 +246,56 @@ function formatEmailDetails(email: any): EmailDetailsResult {
     };
   }
   
-  let result = `### 📧 **Email Details**\n\n`;
+  // Embed original JSON data in a hidden comment for extraction later
+  const emailJson = JSON.stringify(email);
+  let result = `<!-- EMAIL_JSON_DATA:${emailJson} -->\n\n`;
+  
+  result += `### 📧 **Email Details**\n\n`;
   
   result += `#### Subject: ${email.subject || 'No subject'}\n\n`;
   result += `* **From:** ${email.from || 'Unknown sender'}\n`;
   result += `* **To:** ${email.to || 'No recipients'}\n`;
   result += `* **Date:** ${email.date || 'Unknown date'}\n`;
+  result += `* **ID:** \`${email.id}\`\n`;
   
   if (email.labelIds && email.labelIds.length > 0) {
     result += `* **Labels:** ${email.labelIds.join(', ')}\n`;
   }
   
-  result += `\n#### Message Content:\n\n`;
-  
-  // If we have HTML content, add a note
-  if (email.body && email.body.includes('<')) {
-    result += `> *Note: HTML content converted to text*\n\n`;
+  // Add attachment information in a consistent format
+  if (email.hasAttachments && email.attachments && email.attachments.length > 0) {
+    result += `* **Attachments:** ${email.attachments.length} file(s)\n\n`;
     
-    // Basic extraction of text from HTML (very simple approach)
-    const textContent = email.body
-      .replace(/<[^>]*>/g, ' ')  // Remove HTML tags
-      .replace(/\s+/g, ' ')      // Normalize whitespace
-      .trim();
-    
-    result += textContent;
+    // Format each attachment in a way that's easily parseable
+    email.attachments.forEach((attachment: any, i: number) => {
+      result += `#### File ${i + 1}: ${attachment.filename} (${formatFileSize(attachment.size)})\n`;
+      result += `* Type: ${attachment.mimeType}\n`;
+      result += `* ID: \`${attachment.attachmentId}\`\n`;
+      result += `* To download: \`@gmail attachment messageId:"${email.id}" attachmentId:"${attachment.attachmentId}"\`\n\n`;
+    });
   } else {
-    result += email.body || email.snippet || 'No content';
+    result += '\n';
+  }
+  
+  result += `### Message Content:\n\n`;
+  
+  // Handle HTML content
+  if (email.body) {
+    if (email.body.includes('<')) {
+      result += `> *Note: HTML content converted to text*\n\n`;
+      
+      // Basic extraction of text from HTML
+      const textContent = email.body
+        .replace(/<[^>]*>/g, ' ')  // Remove HTML tags
+        .replace(/\s+/g, ' ')      // Normalize whitespace
+        .trim();
+      
+      result += textContent;
+    } else {
+      result += email.body;
+    }
+  } else {
+    result += email.snippet || 'No content';
   }
   
   return {
@@ -277,7 +305,6 @@ function formatEmailDetails(email: any): EmailDetailsResult {
     emailId: email.id || ''
   };
 }
-
 /**
  * Format attachment details for display
  */

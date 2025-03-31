@@ -67,110 +67,201 @@ export default function ChatMessages({ messages }: ChatMessagesProps) {
   }
 
   // Function to render email content with attachments
-  const renderEmailContent = (content: string): React.ReactNode => {
-    // Check if the content contains email details
-    if (content.includes('### 📧 **Email Details**')) {
-      try {
-        // Extract email ID and attachments if they exist
-        const emailIdMatch = content.match(/\*\*ID:\*\*\s+`([^`]+)`/);
-        const emailId = emailIdMatch ? emailIdMatch[1] : null;
-        
-        // Look for attachment section
-        const attachmentSectionMatch = content.match(/Attachments:[\s\S]*?(?=Message Content:|$)/);
+  // src/components/chat/ChatMessages.tsx - Update the renderEmailContent function
 
-        if (emailId && attachmentSectionMatch) {
-          const attachmentSection = attachmentSectionMatch[1];
-          
-          // Extract attachment details - modify this regex based on your response format
-          const attachmentRegex = /File \d+: (.+) \((.+)\)[\s\S]*?Type: (.+)[\s\S]*?ID: (.+)[\s\S]*?To download:/g;
-          const attachments: Attachment[] = [];
-          
-          console.log("Attachment section:", attachmentSection);
-          
-          let match;
-          while ((match = attachmentRegex.exec(attachmentSection)) !== null) {
-            attachments.push({
-              filename: match[1],
-              size: parseFileSize(match[2]),
-              mimeType: match[3],
-              attachmentId: match[4].replace(/`/g, '').trim()
-            });
-          }
-          
-          // If we found attachments, replace the attachment section with our component
-          // If we found attachments, replace the attachment section with our component
-          if (attachments.length > 0 && attachmentSectionMatch && attachmentSectionMatch.index !== undefined) {
-            // Split content at the attachment section
-            console.log("Replacing attachment section with component");
+  // Update the renderEmailContent function in src/components/chat/ChatMessages.tsx
 
-            const beforeAttachments = content.substring(0, attachmentSectionMatch.index);
-            const afterAttachments = content.substring(
-              attachmentSectionMatch.index + attachmentSectionMatch[0].length
-            );
-            
-            return (
-              <>
-                <ReactMarkdown
-                  components={{
-                    h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
-                    h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
-                    p: ({ node, ...props }) => <p {...props} className="my-2" />,
-                    ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
-                    li: ({ node, ...props }) => <li {...props} className="my-1" />,
-                  }}
-                >
-                  {beforeAttachments}
-                </ReactMarkdown>
-                <EmailAttachmentHelper 
-                  messageId={emailId} 
-                  attachments={attachments} 
-                />
-                <ReactMarkdown
-                  components={{
-                    h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
-                    h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
-                    p: ({ node, ...props }) => <p {...props} className="my-2" />,
-                    ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
-                    li: ({ node, ...props }) => <li {...props} className="my-1" />,
-                  }}
-                >
-                  {afterAttachments}
-                </ReactMarkdown>
-              </>
-            );
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing email content:', error);
+function renderEmailContent(content: string): React.ReactNode {
+  // Check if the content contains email details
+  if (content.includes('### 📧 **Email Details**')) {
+    try {
+      console.log("Rendering email content with possible attachments");
+      
+      // Extract email ID
+      const emailIdMatch = content.match(/\*\*ID:\*\*\s+`([^`]+)`/);
+      const emailId = emailIdMatch ? emailIdMatch[1] : null;
+      
+      if (!emailId) {
+        console.log("Could not find email ID in the content");
+        return defaultRenderMarkdown(content);
       }
+      
+      // Look for JSON data in the content - this is a hack to extract raw data
+      // Try to find the original JSON in a comment or hidden section
+
+      const jsonMatch = content.match(/<!-- EMAIL_JSON_DATA:([\s\S]*?)-->/);
+
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          console.log("Found embedded JSON data in email content");
+          const emailData = JSON.parse(jsonMatch[1]);
+          
+          // If we have the email with attachments, extract and display them
+          if (emailData.hasAttachments && emailData.attachments && emailData.attachments.length > 0) {
+            console.log(`Found ${emailData.attachments.length} attachments with data in JSON`);
+            
+            // Find the position to split the content - before the attachments section
+            const attachmentsSectionMatch = content.match(/\*\*Attachments:\*\*[\s\S]*?(?=\n\n###|$)/i);
+            
+            if (attachmentsSectionMatch && attachmentsSectionMatch.index !== undefined) {
+              const beforeAttachments = content.substring(0, attachmentsSectionMatch.index);
+              const afterAttachments = content.substring(
+                attachmentsSectionMatch.index + attachmentsSectionMatch[0].length
+              );
+              
+              return (
+                <>
+                  <ReactMarkdown
+                    components={{
+                      h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                      h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                      p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                      ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                      li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                      code: ({ node, ...props }) => <code {...props} className="px-1 py-0.5 bg-gray-100 rounded text-sm font-mono" />,
+                    }}
+                  >
+                    {beforeAttachments}
+                  </ReactMarkdown>
+                  
+                  <EmailAttachmentHelper 
+                    messageId={emailId} 
+                    attachments={emailData.attachments} // Pass all attachment data
+                  />
+                  
+                  <ReactMarkdown
+                    components={{
+                      h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                      h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                      p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                      ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                      li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                      code: ({ node, ...props }) => <code {...props} className="px-1 py-0.5 bg-gray-100 rounded text-sm font-mono" />,
+                    }}
+                  >
+                    {afterAttachments}
+                  </ReactMarkdown>
+                </>
+              );
+            }
+          }
+        } catch (jsonError) {
+          console.error("Error parsing JSON from email content:", jsonError);
+        }
+      }
+      
+      // If we didn't return above, try the old regex approach
+      // Look for attachment section
+      const attachmentSectionMatch = content.match(/\*\*Attachments:\*\*[\s\S]*?(?=\n\n### |$)/i);
+      
+      if (emailId && attachmentSectionMatch && attachmentSectionMatch.index !== undefined) {
+        const attachmentSection = attachmentSectionMatch[0];
+        console.log("Found attachment section:", attachmentSection);
+        
+        // Improved regex to extract all details including identifiers
+        const attachmentRegex = /File (\d+): ([^\(]+) \(([^\)]+)\)[\s\S]*?Type: ([^\n]+)[\s\S]*?ID: `([^`]+)`/g;
+        const attachments: Array<{
+          filename: string;
+          mimeType: string;
+          size: number;
+          attachmentId: string;
+        }> = [];
+        
+        let match;
+        while ((match = attachmentRegex.exec(attachmentSection)) !== null) {
+          const attachment = {
+            filename: match[2].trim(),
+            size: parseFileSize(match[3].trim()),
+            mimeType: match[4].trim(),
+            attachmentId: match[5].trim()
+          };
+          
+          console.log("Parsed attachment from content:", attachment);
+          attachments.push(attachment);
+        }
+        
+        // If we found attachments, replace the attachment section with our component
+        if (attachments.length > 0) {
+          console.log(`Found ${attachments.length} attachments for email ${emailId} using regex`);
+          
+          // Split content at the attachment section
+          const beforeAttachments = content.substring(0, attachmentSectionMatch.index);
+          const afterAttachments = content.substring(
+            attachmentSectionMatch.index + attachmentSectionMatch[0].length
+          );
+          
+          return (
+            <>
+              <ReactMarkdown
+                components={{
+                  h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                  h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                  p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                  ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                  li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                  code: ({ node, ...props }) => <code {...props} className="px-1 py-0.5 bg-gray-100 rounded text-sm font-mono" />,
+                }}
+              >
+                {beforeAttachments}
+              </ReactMarkdown>
+              
+              <EmailAttachmentHelper 
+                messageId={emailId} 
+                attachments={attachments} 
+              />
+              
+              <ReactMarkdown
+                components={{
+                  h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+                  h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+                  p: ({ node, ...props }) => <p {...props} className="my-2" />,
+                  ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+                  li: ({ node, ...props }) => <li {...props} className="my-1" />,
+                  code: ({ node, ...props }) => <code {...props} className="px-1 py-0.5 bg-gray-100 rounded text-sm font-mono" />,
+                }}
+              >
+                {afterAttachments}
+              </ReactMarkdown>
+            </>
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error parsing email content:', error);
     }
-    
-    // Default: just render the content as markdown
-    return (
-      <ReactMarkdown
-        components={{
-          h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
-          h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
-          p: ({ node, ...props }) => <p {...props} className="my-2" />,
-          ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
-          ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2" />,
-          li: ({ node, ...props }) => <li {...props} className="my-1" />,
-          blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-gray-300 pl-3 py-1 my-2 italic text-gray-600" />,
-          code: ({ className, children, ...props }) => {
-            // Check if it's an inline code block based on the context
-            const isInline = !className || !className.includes('language-');
-            return isInline 
-              ? <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
-              : <pre className="bg-gray-100 p-3 rounded my-2 overflow-x-auto"><code className="text-sm font-mono" {...props}>{children}</code></pre>;
-          },
-          strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
-          em: ({ node, ...props }) => <em {...props} className="italic" />,
-        }}
-      >
-        {content}
-      </ReactMarkdown>
-    );
-  };
+  }
+  
+  // Default: just render the content as markdown
+  return defaultRenderMarkdown(content);
+}
+
+// Helper function to render markdown with default components
+function defaultRenderMarkdown(content: string) {
+  return (
+    <ReactMarkdown
+      components={{
+        h3: ({ node, ...props }) => <h3 {...props} className="text-lg font-bold mb-2 mt-4" />,
+        h4: ({ node, ...props }) => <h4 {...props} className="text-md font-semibold mb-1 mt-3" />,
+        p: ({ node, ...props }) => <p {...props} className="my-2" />,
+        ul: ({ node, ...props }) => <ul {...props} className="list-disc pl-5 my-2" />,
+        ol: ({ node, ...props }) => <ol {...props} className="list-decimal pl-5 my-2" />,
+        li: ({ node, ...props }) => <li {...props} className="my-1" />,
+        blockquote: ({ node, ...props }) => <blockquote {...props} className="border-l-4 border-gray-300 pl-3 py-1 my-2 italic text-gray-600" />,
+        code: ({ className, children, ...props }) => {
+          // Check if it's an inline code block based on the context
+          const isInline = !className || !className.includes('language-');
+          return isInline 
+            ? <code className="bg-gray-100 px-1 py-0.5 rounded text-sm font-mono" {...props}>{children}</code>
+            : <pre className="bg-gray-100 p-3 rounded my-2 overflow-x-auto"><code className="text-sm font-mono" {...props}>{children}</code></pre>;
+        },
+        strong: ({ node, ...props }) => <strong {...props} className="font-bold" />,
+        em: ({ node, ...props }) => <em {...props} className="italic" />,
+      }}
+    >
+      {content}
+    </ReactMarkdown>
+  );
+}
 
   // Helper function to parse file size
   const parseFileSize = (sizeStr: string): number => {
