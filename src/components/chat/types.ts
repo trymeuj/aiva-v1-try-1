@@ -1,6 +1,7 @@
 export type MessageType = 'user' | 'ai' | 'typing';
 
-export type MessageSource = 'user' | 'llm' | 'mcp' | 'websearch' | 'research';
+// Update this type to include 'gmail' and 'calendar'
+export type MessageSource = 'user' | 'llm' | 'mcp' | 'websearch' | 'research' | 'gmail' | 'calendar';
 
 export interface Message {
   id: string;

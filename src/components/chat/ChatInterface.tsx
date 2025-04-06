@@ -3,19 +3,23 @@
 import { useState, useEffect } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 import { useMemory } from '@/hooks/useMemory'
-import { MessageSource } from './types'
 import ChatHeader from './ChatHeader'
 import ChatMessages from './ChatMessages'
 import MessageInput from './MessageInput'
 import FeaturesBar from './FeaturesBar'
 import MCPToolsHelp from './MCPToolsHelp'
+import GmailToolsHelp from './GmailToolsHelp'
+import CalendarToolsHelp from './CalendarToolsHelp'
+import { MessageSource } from './types'
 import { Message, MessageType, ApiMessage, ChatResponse } from './types'
 import { isMCPCommand, parseCommand, callMCPServer } from '@/lib/mcpService'
+import { isGmailCommand, parseCommand as parseGmailCommand, callGmailServer } from '@/lib/gmailService'
+import { isCalendarCommand, parseCommand as parseCalendarCommand, callCalendarServer } from '@/lib/calendarService'
 import { searchWeb } from '@/lib/searchService'
 import { youSmartSearch, youResearch } from '@/lib/youcomService'
 
 export default function ChatInterface(): React.ReactElement {
-  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands to interact with Google Docs. Click the document icon or type @docs to see available commands. Click the search icon for web search. Click the research icon for in-depth research."
+  const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands for document operations, @gmail for email management, and @calendar for calendar operations. Click the icons below or type the commands to get started."
   
   // Initialize memory hook
   const { isReady, getMessages, saveMessage } = useMemory()
@@ -114,7 +118,7 @@ export default function ChatInterface(): React.ReactElement {
       
       let response: ChatResponse;
 
-      // Check if this is an MCP command
+      // Check for different types of commands
       if (isMCPCommand(text)) {
         console.log('Detected MCP command:', text);
         const command = parseCommand(text);
@@ -137,7 +141,56 @@ export default function ChatInterface(): React.ReactElement {
             error: "Invalid command format. Please use format: @docs [tool] [param1:value1] [param2:value2]"
           };
         }
-      } else {
+      } 
+      // Check for Gmail commands
+      else if (isGmailCommand(text)) {
+        console.log('Detected Gmail command:', text);
+        const command = parseGmailCommand(text);
+        
+        if (command) {
+          // Route to Gmail server
+          response = await callGmailServer(command);
+          
+          if (response.success && response.reply) {
+            // Update conversation history for Gmail interaction
+            const gmailConversationUpdate = [
+              ...updatedHistory,
+              { role: 'assistant', content: response.reply }
+            ];
+            setConversationHistory(gmailConversationUpdate);
+          }
+        } else {
+          response = {
+            success: false,
+            error: "Invalid command format. Please use format: @gmail [tool] [param1:value1] [param2:value2]"
+          };
+        }
+      }
+      // Check for Calendar commands
+      else if (isCalendarCommand(text)) {
+        console.log('Detected Calendar command:', text);
+        const command = parseCalendarCommand(text);
+        
+        if (command) {
+          // Route to Calendar server
+          response = await callCalendarServer(command);
+          
+          if (response.success && response.reply) {
+            // Update conversation history for Calendar interaction
+            const calendarConversationUpdate = [
+              ...updatedHistory,
+              { role: 'assistant', content: response.reply }
+            ];
+            setConversationHistory(calendarConversationUpdate);
+          }
+        } else {
+          response = {
+            success: false,
+            error: "Invalid command format. Please use format: @calendar [tool] [param1:value1] [param2:value2]"
+          };
+        }
+      }
+      else {
         // Route to Gemini for normal chat
         response = await sendChatMessage(text, conversationHistory);
         
@@ -164,7 +217,11 @@ export default function ChatInterface(): React.ReactElement {
       setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse]);
       
       // Store AI response in memory with appropriate source
-      const source: MessageSource = isMCPCommand(text) ? 'mcp' : 'llm';
+      let source: MessageSource = 'llm';
+      if (isMCPCommand(text)) source = 'mcp';
+      else if (isGmailCommand(text)) source = 'gmail';
+      else if (isCalendarCommand(text)) source = 'calendar';
+      
       saveMessage(aiResponse, source);
       
     } catch (error) {
@@ -362,6 +419,8 @@ export default function ChatInterface(): React.ReactElement {
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
         <div className="max-w-4xl mx-auto">
           <MCPToolsHelp />
+          <GmailToolsHelp />
+          <CalendarToolsHelp />
         </div>
         <ChatMessages messages={messages} />
       </div>
