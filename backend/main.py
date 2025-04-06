@@ -1,10 +1,17 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Dict, Any
 from gemini import GeminiChatbot
 from google_search import GoogleSearchClient
 from youcom_api import YouComClient  # Import our new You.com client
+import json
+import os
+import logging
+
+# Import the new orchestrator components
+# We'll create these files next
+from orchestrator import Orchestrator
 
 # Initialize FastAPI app
 app = FastAPI(title="Chatbot API")
@@ -18,10 +25,37 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("main")
+
 # Initialize the chatbot and API clients
 chatbot = GeminiChatbot()
 search_client = GoogleSearchClient()
 youcom_client = YouComClient()  # Initialize You.com client
+
+# Load API registry for the orchestrator
+def load_api_registry():
+    try:
+        api_info_path = os.path.join(os.path.dirname(__file__), "api_info")
+        if os.path.exists(api_info_path):
+            with open(api_info_path, "r") as f:
+                return json.load(f)
+        else:
+            logger.warning(f"API info file not found at {api_info_path}")
+            return []
+    except Exception as e:
+        logger.error(f"Error loading API registry: {e}")
+        return []
+
+# Initialize orchestrator with API registry
+try:
+    api_registry = load_api_registry()
+    orchestrator = Orchestrator(api_registry)
+    logger.info("Orchestrator initialized successfully")
+except Exception as e:
+    logger.error(f"Error initializing orchestrator: {e}")
+    orchestrator = None
 
 # Define data models
 class Message(BaseModel):
@@ -47,8 +81,31 @@ class ChatResponse(BaseModel):
     conversationHistory: Optional[List[Message]] = None
     error: Optional[str] = None
 
+# New models for orchestrator
+class WorkflowStep(BaseModel):
+    software: str
+    api: Dict[str, str]
+    parameters: Optional[Dict[str, Any]] = {}
+    reasoning: Optional[str] = None
+
+class WorkflowRequest(BaseModel):
+    workflow: List[WorkflowStep]
+    session_id: Optional[str] = None
+
+class StepExecutionRequest(BaseModel):
+    session_id: str
+    step_id: Optional[str] = None
+    additional_context: Optional[Dict[str, Any]] = None
+
+class ClarificationRequest(BaseModel):
+    session_id: str
+    step_id: str
+    responses: Dict[str, Any]
+
+# Your existing endpoints remain here
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):
+    # Existing implementation...
     try:
         user_message = request.message
         conversation_history = request.conversationHistory
@@ -79,6 +136,7 @@ async def chat(request: ChatRequest):
 
 @app.post("/api/search", response_model=ChatResponse)
 async def search(request: SearchRequest):
+    # Existing implementation...
     try:
         query = request.query
         num_results = request.num_results
@@ -100,6 +158,7 @@ async def search(request: SearchRequest):
 # You.com Smart Search API endpoint
 @app.post("/api/you/smart-search", response_model=ChatResponse)
 async def you_smart_search(request: SearchRequest):
+    # Existing implementation...
     try:
         query = request.query
         instructions = request.instructions
@@ -121,6 +180,7 @@ async def you_smart_search(request: SearchRequest):
 # You.com Research API endpoint
 @app.post("/api/you/research", response_model=ChatResponse)
 async def you_research(request: ResearchRequest):
+    # Existing implementation...
     try:
         query = request.query
         depth = request.depth
@@ -141,6 +201,7 @@ async def you_research(request: ResearchRequest):
 
 @app.get("/test-you-api")
 async def test_you_api():
+    # Existing implementation...
     """Test the You.com API connection directly"""
     results = {
         "success": True,
@@ -187,6 +248,71 @@ async def test_you_api():
         results["success"] = False
     
     return results
+
+# New orchestrator endpoints
+@app.post("/orchestrator/create-plan")
+async def create_plan(request: WorkflowRequest):
+    """
+    Create an execution plan from a workflow.
+    """
+    if not orchestrator:
+        raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+        
+    try:
+        # Convert Pydantic models to dicts
+        workflow_dict = [step.dict() for step in request.workflow]
+        
+        # Create the execution plan
+        plan = orchestrator.create_execution_plan(workflow_dict, request.session_id)
+        return plan
+    except Exception as e:
+        logger.error(f"Error creating plan: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/orchestrator/execute-step")
+async def execute_step(request: StepExecutionRequest):
+    """
+    Execute a single step in the workflow.
+    """
+    if not orchestrator:
+        raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+        
+    try:
+        result = await orchestrator.execute_step(
+            request.session_id, 
+            request.step_id, 
+            request.additional_context
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error executing step: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/orchestrator/provide-clarification")
+async def provide_clarification(request: ClarificationRequest):
+    """
+    Provide user responses to clarification questions.
+    """
+    if not orchestrator:
+        raise HTTPException(status_code=500, detail="Orchestrator not initialized")
+        
+    try:
+        result = await orchestrator.provide_clarification(
+            request.session_id,
+            request.step_id,
+            request.responses
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error processing clarification: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/orchestrator/api-registry")
+async def get_api_registry_endpoint():
+    """
+    Get the API registry.
+    """
+    return load_api_registry()
 
 @app.get("/")
 async def root():

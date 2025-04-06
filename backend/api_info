@@ -1,0 +1,91 @@
+[
+  {
+    "name": "gmail",
+    "description": "Gmail service APIs for email management",
+    "apis": [
+      {
+        "name": "list_emails",
+        "description": "List recent emails from your inbox with optional filtering",
+        "parameters": [
+          { "name": "maxResults", "type": "number", "required": false, "description": "Maximum number of emails to return" },
+          { "name": "query", "type": "string", "required": false, "description": "Gmail query string for filtering results (e.g., 'is:unread')" }
+        ]
+      },
+      {
+        "name": "search_emails",
+        "description": "Advanced email search with Gmail query syntax",
+        "parameters": [
+          { "name": "query", "type": "string", "required": true, "description": "Gmail query string (e.g., 'from:example@gmail.com has:attachment')" },
+          { "name": "maxResults", "type": "number", "required": false, "description": "Maximum number of search results to return" }
+        ]
+      },
+      {
+        "name": "send_email",
+        "description": "Send new emails with support for CC and BCC",
+        "parameters": [
+          { "name": "to", "type": "string", "required": true, "description": "Email address of the recipient" },
+          { "name": "subject", "type": "string", "required": true, "description": "Subject line of the email" },
+          { "name": "body", "type": "string", "required": true, "description": "Content of the email message" },
+          { "name": "cc", "type": "string", "required": false, "description": "Email addresses to CC (carbon copy)" },
+          { "name": "bcc", "type": "string", "required": false, "description": "Email addresses to BCC (blind carbon copy)" }
+        ]
+      },
+      {
+        "name": "modify_email",
+        "description": "Modify email labels (archive, trash, mark read/unread)",
+        "parameters": [
+          { "name": "id", "type": "string", "required": true, "description": "Unique identifier of the email message" },
+          { "name": "addLabels", "type": "string[]", "required": false, "description": "Array of labels to add to the email" },
+          { "name": "removeLabels", "type": "string[]", "required": false, "description": "Array of labels to remove from the email" }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "calendar",
+    "description": "Google Calendar service APIs for event management",
+    "apis": [
+      {
+        "name": "list_events",
+        "description": "List upcoming calendar events with date range filtering",
+        "parameters": [
+          { "name": "maxResults", "type": "number", "required": false, "description": "Maximum number of events to return" },
+          { "name": "timeMin", "type": "string", "required": false, "description": "Start time of the event range in ISO format (e.g., '2024-01-01T00:00:00Z')" },
+          { "name": "timeMax", "type": "string", "required": false, "description": "End time of the event range in ISO format (e.g., '2024-12-31T23:59:59Z')" }
+        ]
+      },
+      {
+        "name": "create_event",
+        "description": "Create new calendar events with attendees",
+        "parameters": [
+          { "name": "summary", "type": "string", "required": true, "description": "Title of the calendar event" },
+          { "name": "location", "type": "string", "required": false, "description": "Location of the event" },
+          { "name": "description", "type": "string", "required": false, "description": "Description of the event" },
+          { "name": "start", "type": "string", "required": true, "description": "Start time of the event in ISO format (e.g., '2024-01-24T10:00:00Z')" },
+          { "name": "end", "type": "string", "required": true, "description": "End time of the event in ISO format (e.g., '2024-01-24T11:00:00Z')" },
+          { "name": "attendees", "type": "string[]", "required": false, "description": "Array of email addresses for attendees" }
+        ]
+      },
+      {
+        "name": "update_event",
+        "description": "Update existing calendar events",
+        "parameters": [
+          { "name": "eventId", "type": "string", "required": true, "description": "Unique identifier of the calendar event" },
+          { "name": "summary", "type": "string", "required": false, "description": "Updated title of the calendar event" },
+          { "name": "location", "type": "string", "required": false, "description": "Updated location of the event" },
+          { "name": "description", "type": "string", "required": false, "description": "Updated description of the event" },
+          { "name": "start", "type": "string", "required": false, "description": "Updated start time of the event in ISO format" },
+          { "name": "end", "type": "string", "required": false, "description": "Updated end time of the event in ISO format" },
+          { "name": "attendees", "type": "string[]", "required": false, "description": "Updated array of email addresses for attendees" }
+        ]
+      },
+      {
+        "name": "delete_event",
+        "description": "Delete calendar events",
+        "parameters": [
+          { "name": "eventId", "type": "string", "required": true, "description": "Unique identifier of the calendar event to delete" }
+        ]
+      }
+    ]
+  }
+]
