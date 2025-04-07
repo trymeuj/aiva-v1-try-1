@@ -112,28 +112,27 @@ export default function ChatInterface(): React.ReactElement {
   // Function to process workflow
   const processWorkflow = async (userPrompt: string): Promise<boolean> => {
     try {
-      const response = await fetch('/api/workflow/process', {
+      const response = await fetch('/api/agent', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          userPrompt
+          message: userPrompt,
+          conversationHistory: []
         }),
       });
 
-      if (!response.ok) {
-        console.error('Workflow process error:', response.statusText);
-        return false;
-      }
-
+      console.log('Raw response:', response);
       const data = await response.json();
+      console.log('Response data:', data);
 
-      // Check if there's a workflow intention
-      if (data.hasAgentIntention && data.plan && data.plan.length > 0) {
-        // Open the workflow sidebar
-        openWorkflow(data as WorkflowPlan);
-        setCurrentSessionId(data.session_id);
+      if (data.metadata && data.metadata.workflow) {
+        console.log('Opening workflow with plan:', data.metadata.plan);
+        openWorkflow({
+          session_id: data.metadata.session_id,
+          plan: data.metadata.plan
+        });
         return true;
       }
 

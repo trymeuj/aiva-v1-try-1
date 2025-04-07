@@ -337,85 +337,32 @@ async def agent_request(request: ChatRequest):
         user_message = request.message
         conversation_history = request.conversationHistory
         
-        # 1. Send user message to intent extractor
-        # Get the API key from environment
-        api_key = os.environ.get("GOOGLE_API_KEY")
-        if not api_key:
-            raise HTTPException(status_code=500, detail="Google API key not configured")
-            
-        # Load API information from file
-        api_ref_data = load_api_registry()
-        
-        if not api_ref_data:
-            raise HTTPException(status_code=500, detail="Could not load API information")
-        
         # Extract API intentions
-        from intent_extractor import extract_api_intentions
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_ref_data = load_api_registry()
         intent_result = await extract_api_intentions(user_message, api_ref_data, api_key)
         
         # Check if there's an agent intention
         if not intent_result.get("hasAgentIntention", False) or not intent_result.get("workflow"):
-            # If no agent intention, fall back to regular chat
             return await chat(request)
         
-        # 2. Create an execution plan with the orchestrator
+        # Create an execution plan
         workflow = intent_result["workflow"]
         plan_result = orchestrator.create_execution_plan(workflow)
-        session_id = plan_result["session_id"]
         
-        # 3. Execute all steps in the plan
-        current_result = None
-        for step in plan_result["plan"]:
-            step_id = step["id"]
-            # Execute the current step
-            step_result = await orchestrator.execute_step(session_id, step_id)
-            
-            # Handle clarification requests if needed
-            while step_result.get("status") == "needs_clarification":
-                # For automatic mode, we could use the chatbot to generate answers
-                # But for simplicity, we'll just report that clarification is needed
-                clarification_info = {
-                    "needs_clarification": True,
-                    "step_id": step_id,
-                    "questions": step_result.get("questions"),
-                    "session_id": session_id
-                }
-                return ChatResponse(
-                    success=True,
-                    reply=f"I need more information to proceed: {json.dumps(step_result.get('questions'))}",
-                    conversationHistory=conversation_history + [
-                        Message(role="user", content=user_message),
-                        Message(role="assistant", content=f"I need more information to proceed.")
-                    ],
-                    metadata=clarification_info
-                )
-            
-            # If we got here, the step executed successfully or failed
-            if step_result.get("status") == "error":
-                return ChatResponse(
-                    success=False,
-                    error=f"Error executing step: {step_result.get('error')}",
-                    conversationHistory=conversation_history
-                )
-                
-            # Store the current result to potentially use for the final response
-            current_result = step_result
-        
-        # 4. Generate a human-friendly response from the final result
-        # We could use the LLM to generate a nice summary here
-        final_result = current_result.get("result", {})
-        final_message = json.dumps(final_result, indent=2)
-        
-        # Update conversation history
-        updated_history = conversation_history + [
-            Message(role="user", content=user_message),
-            Message(role="assistant", content=final_message)
-        ]
-        
+        # Return the plan immediately so the UI can show it
         return ChatResponse(
             success=True,
-            reply=final_message,
-            conversationHistory=updated_history
+            reply="I've created a plan to handle your request. You can see the steps in the sidebar.",
+            conversationHistory=conversation_history + [
+                Message(role="user", content=user_message),
+                Message(role="assistant", content="I've created a plan for your request.")
+            ],
+            metadata={
+                "workflow": True,  # Add this flag
+                "session_id": plan_result["session_id"],
+                "plan": plan_result["plan"]
+            }
         )
         
     except Exception as e:
