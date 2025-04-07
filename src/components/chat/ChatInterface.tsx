@@ -19,6 +19,7 @@ import { searchWeb } from '@/lib/searchService'
 import { youSmartSearch, youResearch } from '@/lib/youcomService'
 import { useWorkflow, WorkflowPlan } from '../SideDisplay/WorkflowContext'
 
+
 export default function ChatInterface(): React.ReactElement {
   const welcomeMessage = "Hello! I'm your personal AI assistant powered by Gemini. How can I help you today?\n\nTIP: You can use @docs commands for document operations, @gmail for email management, and @calendar for calendar operations. Click the icons below or type the commands to get started."
   
@@ -34,6 +35,9 @@ export default function ChatInterface(): React.ReactElement {
       timestamp: new Date(),
     }
   ])
+
+  const [awaitingConfirmation, setAwaitingConfirmation] = useState<boolean>(false);
+  const [confirmationSessionId, setConfirmationSessionId] = useState<string | null>(null);
 
   // Track backend conversation history
   const [conversationHistory, setConversationHistory] = useState<ApiMessage[]>([
@@ -264,15 +268,66 @@ export default function ChatInterface(): React.ReactElement {
     
     try {
       // Add user message to conversation history
-      const updatedHistory = [
-        ...conversationHistory,
-        { role: 'user', content: text }
-      ];
+      const updatedHistory = conversationHistory.map(msg => {
+        // Ensure we're using the API format expected by the backend
+        return {
+          role: msg.role, 
+          content: msg.content
+        };
+      }).concat([{ role: 'user', content: text }]);
 
       // If agent action is enabled, process with workflow
       if (isAgentAction) {
-        const workflowCreated = await processWorkflow(text);
-        // Even if workflow processing failed, we still want to provide a response
+        const response = await fetch('/api/agent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            message: text,
+            conversationHistory: updatedHistory,
+          }),
+        });
+        
+        const data = await response.json();
+        
+        // Check if we're awaiting confirmation
+        if (data.metadata && data.metadata.awaiting_confirmation) {
+          setAwaitingConfirmation(true);
+          setConfirmationSessionId(data.metadata.session_id);
+        } else if (awaitingConfirmation) {
+          // If we were awaiting confirmation, but this response doesn't maintain it
+          // We should clear the confirmation state
+          setAwaitingConfirmation(false);
+          setConfirmationSessionId(null);
+        }
+        
+        // Update conversation history for backend
+        if (data.success && data.conversationHistory) {
+          setConversationHistory(data.conversationHistory);
+        }
+        
+        // Handle error
+        if (!data.success || !data.reply) {
+          throw new Error(data.error || 'Failed to get response');
+        }
+        
+        // Add AI response to UI
+        const aiResponse: Message = {
+          id: uuidv4(),
+          type: MessageType.AI,
+          text: data.reply,
+          timestamp: new Date(),
+          source: MessageSource.Workflow,
+        }
+        
+        setIsTyping(false);
+        setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse]);
+        
+        // Store in memory
+        saveMessage(aiResponse, MessageSource.Workflow);
+        
+        return;
       }
       
       // For regular text interactions (or as backup if workflow fails), send to LLM
@@ -294,15 +349,14 @@ export default function ChatInterface(): React.ReactElement {
         type: MessageType.AI,
         text: response.reply,
         timestamp: new Date(),
-        // Track if this was from an agent action or regular LLM
-        source: isAgentAction ? MessageSource.Workflow : MessageSource.LLM,
+        source: MessageSource.LLM,
       }
       
       setIsTyping(false);
       setMessages(prev => [...prev.filter(msg => msg.id !== 'typing-indicator'), aiResponse]);
       
       // Store in memory
-      saveMessage(aiResponse, isAgentAction ? MessageSource.Workflow : MessageSource.LLM);
+      saveMessage(aiResponse, MessageSource.LLM);
       
     } catch (error) {
       console.error('Error getting response:', error);
@@ -320,8 +374,13 @@ export default function ChatInterface(): React.ReactElement {
       
       // Store error message in memory
       saveMessage(errorMessage, MessageSource.LLM);
+      
+      // Clear confirmation state on error
+      setAwaitingConfirmation(false);
+      setConfirmationSessionId(null);
     }
   }
+
 
   // Function to handle web search using You.com Smart Search
   const handleSearch = async (query: string): Promise<void> => {

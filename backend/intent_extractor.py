@@ -10,6 +10,8 @@ import logging
 from typing import Dict, List, Any, Optional
 import google.generativeai as genai
 from fastapi import Request
+import re
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -46,8 +48,18 @@ def create_api_reference_string(api_ref_data):
     
     return result
 
-async def extract_api_intentions(user_prompt, api_ref_data, api_key):
+async def extract_api_intentions(user_prompt, api_ref_data, api_key, pending_confirmation=None):
     """Extract API intentions using Gemini"""
+
+    # Check for confirmation words if we have a pending confirmation
+    if pending_confirmation and re.match(r'^(yes|confirm|sure|okay|ok|yep|proceed|go ahead|do it)$', user_prompt.lower().strip()):
+        # Return the pending confirmation as the workflow
+        return {
+            "hasAgentIntention": True,
+            "reasoning": "User confirmed the previously suggested action.",
+            "workflow": pending_confirmation,
+            "isConfirmation": True
+        }
     # Initialize Gemini client
     genai.configure(api_key=api_key)
     
@@ -112,7 +124,6 @@ If the user wants to perform multiple operations in sequence, include all APIs i
             return json.loads(text)
         except json.JSONDecodeError:
             # If direct parsing fails, try to extract JSON from the text
-            import re
             json_match = re.search(r'({.*})', text, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(1))

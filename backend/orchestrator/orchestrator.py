@@ -3,9 +3,8 @@ import logging
 from typing import Dict, List, Any, Optional, Union
 import asyncio
 # Add to the imports at the top of orchestrator.py
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
-from datetime import datetime
 
 
 # You'll need to adjust this import based on how your Gemini integration is structured
@@ -29,7 +28,37 @@ class Orchestrator:
         """
         self.api_registry = api_registry
         self.execution_contexts = {}  # Stores execution state for multiple sessions
+        self.pending_confirmations = {}  # Stores workflows awaiting confirmation
+
+     # Add this new method
+    def store_pending_confirmation(self, session_id: str, workflow: List[Dict]) -> None:
+        """Store a workflow that's awaiting user confirmation."""
+        self.pending_confirmations[session_id] = {
+            "workflow": workflow,
+            "timestamp": datetime.now(),
+            "expires_at": datetime.now() + timedelta(minutes=5)  # Expire after 5 minutes
+        }
     
+    # Add this new method
+    def get_pending_confirmation(self, session_id: str) -> Optional[List[Dict]]:
+        """Get a pending workflow if it exists and hasn't expired."""
+        pending = self.pending_confirmations.get(session_id)
+        if not pending:
+            return None
+            
+        # Check if expired
+        if datetime.now() > pending["expires_at"]:
+            del self.pending_confirmations[session_id]
+            return None
+            
+        return pending["workflow"]
+    
+    # Add this new method
+    def clear_pending_confirmation(self, session_id: str) -> None:
+        """Clear a pending workflow confirmation."""
+        if session_id in self.pending_confirmations:
+            del self.pending_confirmations[session_id]
+            
     def create_execution_plan(self, workflow: List[Dict], session_id: str = None) -> Dict:
         """
         Create a detailed execution plan from a workflow.
