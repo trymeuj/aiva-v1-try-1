@@ -87,5 +87,68 @@
         ]
       }
     ]
+  },
+  {
+    "name": "docs",
+    "description": "Google Docs API for document creation, reading, editing, and commenting",
+    "apis": [
+      {
+        "name": "create-doc",
+        "description": "Creates a new Google Doc with an optional title",
+        "parameters": [
+          { "name": "title", "type": "string", "required": false, "description": "Optional title for the document" },
+          { "name": "org", "type": "string", "required": false, "description": "Optional organization domain to share with" },
+          { "name": "role", "type": "string", "required": false, "description": "Permission role (writer/reader)" }
+        ]
+      },
+      {
+        "name": "read-doc",
+        "description": "Reads content from a Google Doc",
+        "parameters": [
+          { "name": "document_id", "type": "string", "required": true, "description": "ID of the document to read" }
+        ]
+      },
+      {
+        "name": "rewrite-document",
+        "description": "Rewrites the entire content of a Google Doc",
+        "parameters": [
+          { "name": "document_id", "type": "string", "required": true, "description": "ID of the document" },
+          { "name": "final_text", "type": "string", "required": true, "description": "New content for the document" }
+        ]
+      },
+      {
+        "name": "read-comments",
+        "description": "Reads comments from a document",
+        "parameters": [
+          { "name": "document_id", "type": "string", "required": true, "description": "ID of the document" }
+        ]
+      },
+      {
+        "name": "reply-comment",
+        "description": "Replies to a comment",
+        "parameters": [
+          { "name": "document_id", "type": "string", "required": true, "description": "ID of the document" },
+          { "name": "comment_id", "type": "string", "required": true, "description": "ID of the comment" },
+          { "name": "reply", "type": "string", "required": true, "description": "Reply content" }
+        ]
+      },
+      {
+        "name": "create-comment",
+        "description": "Creates a new comment",
+        "parameters": [
+          { "name": "document_id", "type": "string", "required": true, "description": "ID of the document" },
+          { "name": "content", "type": "string", "required": true, "description": "Comment content" }
+        ]
+      },
+      {
+        "name": "delete-reply",
+        "description": "Deletes a reply from a comment",
+        "parameters": [
+          { "name": "document_id", "type": "string", "required": true, "description": "ID of the document" },
+          { "name": "comment_id", "type": "string", "required": true, "description": "ID of the comment" },
+          { "name": "reply_id", "type": "string", "required": true, "description": "ID of the reply" }
+        ]
+      }
+    ]
   }
 ]

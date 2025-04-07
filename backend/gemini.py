@@ -2,6 +2,21 @@ import google.generativeai as genai
 import os
 from dotenv import load_dotenv
 from typing import List, Dict, Any
+import logging
+import sys
+from datetime import datetime
+
+# Set up logging
+log_filename = f"backend_logs_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_filename),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger("main")
 
 # Load environment variables
 load_dotenv()

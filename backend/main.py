@@ -12,6 +12,7 @@ import logging
 # Import the new orchestrator components
 # We'll create these files next
 from orchestrator import Orchestrator
+from workflow_connector import setup_workflow_routes
 
 # Initialize FastAPI app
 app = FastAPI(title="Chatbot API")
@@ -56,6 +57,15 @@ try:
 except Exception as e:
     logger.error(f"Error initializing orchestrator: {e}")
     orchestrator = None
+
+# Initialize the workflow connector with the orchestrator
+if orchestrator:
+    try:
+        # Set up the workflow routes
+        setup_workflow_routes(app, orchestrator)
+        logger.info("Workflow routes initialized successfully")
+    except Exception as e:
+        logger.error(f"Error setting up workflow routes: {e}")
 
 # Define data models
 class Message(BaseModel):
@@ -317,6 +327,133 @@ async def get_api_registry_endpoint():
 @app.get("/")
 async def root():
     return {"message": "Chatbot API is running"}
+
+@app.post("/api/agent", response_model=ChatResponse)
+async def agent_request(request: ChatRequest):
+    """
+    Process a user request through the intent extraction and orchestration pipeline.
+    """
+    try:
+        user_message = request.message
+        conversation_history = request.conversationHistory
+        
+        # 1. Send user message to intent extractor
+        # Get the API key from environment
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=500, detail="Google API key not configured")
+            
+        # Load API information from file
+        api_ref_data = load_api_registry()
+        
+        if not api_ref_data:
+            raise HTTPException(status_code=500, detail="Could not load API information")
+        
+        # Extract API intentions
+        from intent_extractor import extract_api_intentions
+        intent_result = await extract_api_intentions(user_message, api_ref_data, api_key)
+        
+        # Check if there's an agent intention
+        if not intent_result.get("hasAgentIntention", False) or not intent_result.get("workflow"):
+            # If no agent intention, fall back to regular chat
+            return await chat(request)
+        
+        # 2. Create an execution plan with the orchestrator
+        workflow = intent_result["workflow"]
+        plan_result = orchestrator.create_execution_plan(workflow)
+        session_id = plan_result["session_id"]
+        
+        # 3. Execute all steps in the plan
+        current_result = None
+        for step in plan_result["plan"]:
+            step_id = step["id"]
+            # Execute the current step
+            step_result = await orchestrator.execute_step(session_id, step_id)
+            
+            # Handle clarification requests if needed
+            while step_result.get("status") == "needs_clarification":
+                # For automatic mode, we could use the chatbot to generate answers
+                # But for simplicity, we'll just report that clarification is needed
+                clarification_info = {
+                    "needs_clarification": True,
+                    "step_id": step_id,
+                    "questions": step_result.get("questions"),
+                    "session_id": session_id
+                }
+                return ChatResponse(
+                    success=True,
+                    reply=f"I need more information to proceed: {json.dumps(step_result.get('questions'))}",
+                    conversationHistory=conversation_history + [
+                        Message(role="user", content=user_message),
+                        Message(role="assistant", content=f"I need more information to proceed.")
+                    ],
+                    metadata=clarification_info
+                )
+            
+            # If we got here, the step executed successfully or failed
+            if step_result.get("status") == "error":
+                return ChatResponse(
+                    success=False,
+                    error=f"Error executing step: {step_result.get('error')}",
+                    conversationHistory=conversation_history
+                )
+                
+            # Store the current result to potentially use for the final response
+            current_result = step_result
+        
+        # 4. Generate a human-friendly response from the final result
+        # We could use the LLM to generate a nice summary here
+        final_result = current_result.get("result", {})
+        final_message = json.dumps(final_result, indent=2)
+        
+        # Update conversation history
+        updated_history = conversation_history + [
+            Message(role="user", content=user_message),
+            Message(role="assistant", content=final_message)
+        ]
+        
+        return ChatResponse(
+            success=True,
+            reply=final_message,
+            conversationHistory=updated_history
+        )
+        
+    except Exception as e:
+        logger.error(f"Error in agent request: {e}")
+        return ChatResponse(
+            success=False,
+            error=str(e)
+        )
+
+# Add endpoint to handle clarification responses
+@app.post("/api/agent/clarify", response_model=ChatResponse)
+async def provide_agent_clarification(request: ClarificationRequest):
+    """
+    Provide clarification for an agent request that needed more information.
+    """
+    try:
+        # Get the result of providing clarification
+        result = await orchestrator.provide_clarification(
+            request.session_id,
+            request.step_id,
+            request.responses
+        )
+        
+        # Continue executing steps
+        # ... similar to the agent_request endpoint after clarification ...
+        
+        # For now, just return the result
+        return ChatResponse(
+            success=True,
+            reply=json.dumps(result, indent=2)
+        )
+        
+    except Exception as e:
+        logger.error(f"Error providing clarification: {e}")
+        return ChatResponse(
+            success=False,
+            error=str(e)
+        )
 
 if __name__ == "__main__":
     import uvicorn
